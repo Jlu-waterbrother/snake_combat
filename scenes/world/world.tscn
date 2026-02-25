@@ -1,0 +1,24 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/world.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/managers/snake_manager.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/managers/food_manager.gd" id="3"]
+[ext_resource type="Resource" path="res://resources/config/default_movement_config.tres" id="4"]
+[ext_resource type="Resource" path="res://resources/config/default_food_config.tres" id="5"]
+[ext_resource type="Resource" path="res://resources/config/default_ai_config.tres" id="6"]
+
+[node name="World" type="Node2D"]
+script = ExtResource("1")
+movement_config = ExtResource("4")
+food_config = ExtResource("5")
+ai_config = ExtResource("6")
+
+[node name="SnakeManager" type="Node" parent="."]
+script = ExtResource("2")
+
+[node name="FoodManager" type="Node2D" parent="."]
+script = ExtResource("3")
+
+[node name="CameraRig" type="Camera2D" parent="."]
+position_smoothing_enabled = true
+position_smoothing_speed = 5.0
