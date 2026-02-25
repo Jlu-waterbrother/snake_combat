@@ -15,6 +15,9 @@ signal enemy_state_changed(snake_id: StringName, state: StringName)
 @export var enemy_spawn_radius_min: float = 420.0
 @export var enemy_spawn_radius_max: float = 980.0
 @export var world_radius: float = 2200.0
+@export var head_to_body_collision_radius: float = 8.0
+@export var head_to_body_ignore_points: int = 4
+@export var head_to_body_sample_step: int = 2
 
 const STATE_PATROL: StringName = &"patrol"
 const STATE_SEEK: StringName = &"seek"
@@ -42,6 +45,7 @@ func _physics_process(delta: float) -> void:
 	_update_enemy_ai(delta)
 	_check_world_bounds()
 	_check_head_to_head_collision()
+	_check_head_to_body_collision()
 
 func spawn_player_snake() -> StringName:
 	var snake_id: StringName = &"player"
@@ -332,6 +336,38 @@ func _check_world_bounds() -> void:
 
 	for snake_id: StringName in snakes_to_kill:
 		kill_snake(snake_id, &"out_of_bounds")
+
+func _check_head_to_body_collision() -> void:
+	var snake_ids: Array[StringName] = []
+	for snake_id: StringName in _snake_nodes.keys():
+		snake_ids.append(snake_id)
+
+	for attacker_id: StringName in snake_ids:
+		if not _snake_nodes.has(attacker_id):
+			continue
+		var attacker_node: Node2D = _snake_nodes[attacker_id]
+		var head_position: Vector2 = attacker_node.global_position
+
+		for defender_id: StringName in snake_ids:
+			if attacker_id == defender_id:
+				continue
+			if not _snake_nodes.has(defender_id):
+				continue
+
+			var defender_node: Node2D = _snake_nodes[defender_id]
+			if not defender_node.has_method("collides_with_body"):
+				continue
+
+			var collided_value: Variant = defender_node.call(
+				"collides_with_body",
+				head_position,
+				head_to_body_collision_radius,
+				head_to_body_ignore_points,
+				head_to_body_sample_step
+			)
+			if collided_value is bool and collided_value:
+				kill_snake(attacker_id, &"body_collision")
+				return
 
 func _check_head_to_head_collision() -> void:
 	var snake_ids: Array[StringName] = []

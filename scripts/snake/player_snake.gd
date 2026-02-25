@@ -115,6 +115,27 @@ func get_body_length() -> float:
 func get_heading() -> Vector2:
 	return _heading
 
+func get_body_collision_radius() -> float:
+	if body_line == null:
+		return head_radius
+	return max(body_line.width * 0.5, head_radius * 0.7)
+
+func collides_with_body(point: Vector2, other_radius: float, ignore_points_from_head: int = 4, sample_step: int = 1) -> bool:
+	if _trail_points.size() < 3:
+		return false
+
+	var collision_radius: float = get_body_collision_radius() + max(other_radius, 0.0)
+	var threshold_squared: float = collision_radius * collision_radius
+	var max_index: int = _trail_points.size() - max(ignore_points_from_head, 0)
+	if max_index <= 0:
+		return false
+
+	var step: int = max(sample_step, 1)
+	for i: int in range(0, max_index, step):
+		if _trail_points[i].distance_squared_to(point) <= threshold_squared:
+			return true
+	return false
+
 func _read_turn_input() -> float:
 	if control_mode == ControlMode.AI:
 		return _ai_turn_input
