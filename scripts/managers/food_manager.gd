@@ -24,7 +24,17 @@ func bootstrap_food() -> void:
 	_rng.randomize()
 	_ensure_pool_capacity(initial_food_count)
 	for _i: int in range(initial_food_count):
-		_spawn_food_from_pool()
+		_spawn_food_at_position(_sample_spawn_point(), 1)
+
+func spawn_food_burst(center_position: Vector2, amount: int) -> void:
+	if amount <= 0:
+		push_warning("Food burst amount must be positive.")
+		return
+
+	var burst_radius: float = min(spawn_radius * 0.05, 120.0)
+	for _i: int in range(amount):
+		var offset: Vector2 = _random_point_in_radius(burst_radius)
+		_spawn_food_at_position(center_position + offset, 1)
 
 func _ensure_pool_capacity(target_count: int) -> void:
 	while _active_food.size() + _inactive_food.size() < target_count:
@@ -44,17 +54,16 @@ func _ensure_pool_capacity(target_count: int) -> void:
 			food_node.call("deactivate")
 		_inactive_food.append(food_node)
 
-func _spawn_food_from_pool() -> void:
+func _spawn_food_at_position(point: Vector2, food_amount: int) -> void:
 	var food_node: Area2D = _acquire_food_node()
 	if food_node == null:
 		return
 
-	var point: Vector2 = _sample_spawn_point()
 	var food_id: int = _next_food_id
 	_next_food_id += 1
 
 	if food_node.has_method("configure"):
-		food_node.call("configure", food_id, point, 1)
+		food_node.call("configure", food_id, point, food_amount)
 	else:
 		food_node.global_position = point
 		food_node.visible = true
@@ -103,4 +112,4 @@ func _on_food_consumed(snake_id: StringName, amount: int, food_node: Area2D) -> 
 	food_eaten.emit(snake_id, amount)
 
 	if respawn_on_consume:
-		_spawn_food_from_pool()
+		_spawn_food_at_position(_sample_spawn_point(), 1)

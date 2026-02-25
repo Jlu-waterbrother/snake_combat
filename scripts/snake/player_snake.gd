@@ -1,5 +1,7 @@
 extends Node2D
 
+signal snake_died(reason: StringName)
+
 @export var movement_config: Resource
 @export var default_base_speed: float = 220.0
 @export var default_boost_speed: float = 340.0
@@ -9,6 +11,9 @@ extends Node2D
 @export var initial_heading: Vector2 = Vector2.RIGHT
 @export var head_radius: float = 10.0
 @export var head_color: Color = Color(0.22, 0.84, 0.31)
+@export var self_collision_radius: float = 9.0
+@export var self_collision_min_body_length: float = 260.0
+@export var self_collision_sample_step: int = 2
 
 @onready var body_line: Line2D = $BodyLine
 @onready var head_area: Area2D = $HeadArea
@@ -18,6 +23,7 @@ var snake_id: StringName = &"player"
 var _heading: Vector2 = Vector2.RIGHT
 var _trail_points: Array[Vector2] = []
 var _segment_spacing: float = 10.0
+var _is_dead: bool = false
 
 func _ready() -> void:
 	_heading = initial_heading.normalized()
@@ -37,6 +43,9 @@ func _draw() -> void:
 	draw_circle(Vector2.ZERO, head_radius, head_color)
 
 func _physics_process(delta: float) -> void:
+	if _is_dead:
+		return
+
 	var base_speed_raw: float = _config_number("base_speed", default_base_speed)
 	var boost_speed_raw: float = _config_number("boost_speed", default_boost_speed)
 	var turn_rate_deg: float = _config_number("turn_rate_deg_per_second", default_turn_rate_deg_per_second)
@@ -56,6 +65,10 @@ func _physics_process(delta: float) -> void:
 	_trim_trail_to_length(body_length)
 	_sync_body_line()
 
+	if _detect_self_collision():
+		_is_dead = true
+		snake_died.emit(&"self_collision")
+
 func set_movement_config(config: Resource) -> void:
 	movement_config = config
 
@@ -70,6 +83,9 @@ func grow_by(length_delta: float) -> void:
 		push_warning("Snake growth delta must be positive.")
 		return
 	body_length += length_delta
+
+func get_body_length() -> float:
+	return body_length
 
 func _append_trail_point(world_point: Vector2) -> void:
 	if _trail_points.is_empty():
@@ -107,6 +123,24 @@ func _trim_trail_to_length(max_length: float) -> void:
 
 	if keep_index > 0:
 		_trail_points = _trail_points.slice(keep_index, _trail_points.size())
+
+func _detect_self_collision() -> bool:
+	if body_length < self_collision_min_body_length:
+		return false
+	if _trail_points.size() < 10:
+		return false
+
+	var head_position: Vector2 = global_position
+	var points_to_ignore: int = int(max(4.0, ceil(24.0 / max(_segment_spacing, 1.0))))
+	var max_index: int = _trail_points.size() - points_to_ignore
+	if max_index <= 0:
+		return false
+
+	var step: int = max(self_collision_sample_step, 1)
+	for i: int in range(0, max_index, step):
+		if _trail_points[i].distance_to(head_position) <= self_collision_radius:
+			return true
+	return false
 
 func _sync_body_line() -> void:
 	var local_points: PackedVector2Array = PackedVector2Array()

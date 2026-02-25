@@ -19,6 +19,9 @@ func register_snake(snake_id: StringName) -> void:
 	_scores[snake_id] = 0
 	score_changed.emit(snake_id, 0)
 
+func unregister_snake(snake_id: StringName) -> void:
+	_scores.erase(snake_id)
+
 func set_score(snake_id: StringName, score: int) -> void:
 	if score < 0:
 		push_warning("Negative score is invalid for snake: %s" % snake_id)

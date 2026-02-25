@@ -10,6 +10,7 @@ signal match_state_changed(state: StringName)
 @export var food_config: Resource
 @export var ai_config: Resource
 @export var camera_follow_lerp_speed: float = 8.0
+@export var world_radius: float = 2200.0
 
 @onready var snake_manager := $SnakeManager
 @onready var food_manager := $FoodManager
@@ -20,6 +21,7 @@ var _camera_target_snake_id: StringName = &""
 func _ready() -> void:
 	snake_manager.snake_spawned.connect(_on_snake_spawned)
 	snake_manager.snake_died.connect(_on_snake_died)
+	snake_manager.snake_mass_dropped.connect(_on_snake_mass_dropped)
 	snake_manager.score_changed.connect(_on_score_changed)
 	food_manager.food_eaten.connect(_on_food_eaten)
 
@@ -39,6 +41,10 @@ func _physics_process(delta: float) -> void:
 		return
 
 	var target_position: Vector2 = snake_manager.get_snake_position(_camera_target_snake_id)
+	if target_position.length() > world_radius:
+		snake_manager.kill_snake(_camera_target_snake_id, &"out_of_bounds")
+		return
+
 	var follow_weight: float = clamp(camera_follow_lerp_speed * delta, 0.0, 1.0)
 	camera_rig.global_position = camera_rig.global_position.lerp(target_position, follow_weight)
 
@@ -67,6 +73,17 @@ func _on_score_changed(snake_id: StringName, score: int) -> void:
 
 func _on_snake_died(snake_id: StringName, reason: StringName) -> void:
 	snake_died.emit(snake_id, reason)
+	var game_state := get_node_or_null("/root/GameState")
+	if game_state != null and game_state.has_method("unregister_snake"):
+		game_state.unregister_snake(snake_id)
+
+	if snake_id == _camera_target_snake_id:
+		_camera_target_snake_id = &""
+		_set_match_state(&"respawning")
+		call_deferred("_respawn_player")
+
+func _on_snake_mass_dropped(world_position: Vector2, amount: int) -> void:
+	food_manager.spawn_food_burst(world_position, amount)
 
 func _on_snake_spawned(snake_id: StringName) -> void:
 	snake_spawned.emit(snake_id)
@@ -79,3 +96,12 @@ func _set_match_state(state: StringName) -> void:
 	var game_state := get_node_or_null("/root/GameState")
 	if game_state != null:
 		game_state.set_match_state(state)
+
+func _respawn_player() -> void:
+	var player_snake_id: StringName = snake_manager.spawn_player_snake()
+	if player_snake_id == &"":
+		_set_match_state(&"ended")
+		return
+
+	_camera_target_snake_id = player_snake_id
+	_set_match_state(&"running")
