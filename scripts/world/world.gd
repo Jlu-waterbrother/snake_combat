@@ -6,18 +6,30 @@ signal snake_died(snake_id: StringName, reason: StringName)
 signal snake_spawned(snake_id: StringName)
 signal match_state_changed(state: StringName)
 signal enemy_state_changed(snake_id: StringName, state: StringName)
+signal lives_changed(remaining_lives: int)
+signal difficulty_changed(level: int, enemy_target: int)
 
 @export var movement_config: Resource
 @export var food_config: Resource
 @export var ai_config: Resource
 @export var camera_follow_lerp_speed: float = 8.0
 @export var world_radius: float = 2200.0
+@export var player_lives: int = 3
+@export var difficulty_tick_interval: float = 0.5
 
 @onready var snake_manager := $SnakeManager
 @onready var food_manager := $FoodManager
 @onready var camera_rig: Camera2D = $CameraRig
 
 var _camera_target_snake_id: StringName = &""
+var _remaining_lives: int = 0
+var _difficulty_level: int = 0
+var _difficulty_check_cooldown: float = 0.0
+var _base_enemy_count: int = 0
+var _max_enemy_count: int = 0
+var _score_per_level: int = 20
+var _max_difficulty_level: int = 5
+var _base_camera_follow_lerp_speed: float = 8.0
 
 func _ready() -> void:
 	snake_manager.snake_spawned.connect(_on_snake_spawned)
@@ -32,6 +44,19 @@ func _ready() -> void:
 	snake_manager.set_food_manager(food_manager)
 	snake_manager.set_world_radius(world_radius)
 
+	if ai_config != null:
+		_base_enemy_count = int(max(ai_config.enemy_count, 0))
+		_max_enemy_count = int(max(ai_config.max_enemy_count, _base_enemy_count))
+		_score_per_level = int(max(ai_config.score_per_difficulty_level, 1))
+		_max_difficulty_level = int(max(ai_config.max_difficulty_level, 0))
+	else:
+		_base_enemy_count = 4
+		_max_enemy_count = 8
+		_score_per_level = 20
+		_max_difficulty_level = 5
+
+	_base_camera_follow_lerp_speed = camera_follow_lerp_speed
+
 	if food_config != null:
 		food_manager.initial_food_count = food_config.initial_food_count
 		food_manager.spawn_radius = food_config.spawn_radius
@@ -41,6 +66,8 @@ func _ready() -> void:
 	food_manager.bootstrap_food()
 
 func _physics_process(delta: float) -> void:
+	_update_dynamic_difficulty(delta)
+
 	if _camera_target_snake_id == &"":
 		return
 	if not snake_manager.has_snake(_camera_target_snake_id):
@@ -51,22 +78,56 @@ func _physics_process(delta: float) -> void:
 	camera_rig.global_position = camera_rig.global_position.lerp(target_position, follow_weight)
 
 func start_match() -> void:
+	_remaining_lives = max(player_lives, 1)
+	lives_changed.emit(_remaining_lives)
+
+	_difficulty_level = 0
+	_difficulty_check_cooldown = 0.0
+	snake_manager.set_target_enemy_count(_base_enemy_count)
+	snake_manager.set_ai_difficulty_scalars(1.0, 1.0)
+	difficulty_changed.emit(_difficulty_level, _base_enemy_count)
+
 	var player_snake_id: StringName = snake_manager.spawn_player_snake()
 	if player_snake_id == &"":
 		push_error("Failed to spawn player snake.")
+		_set_match_state(&"ended")
 		return
 
-	var enemy_count: int = 0
-	if ai_config != null:
-		enemy_count = int(max(ai_config.enemy_count, 0))
-	snake_manager.spawn_enemy_snakes(enemy_count)
-
+	snake_manager.spawn_enemy_snakes(_base_enemy_count)
 	_camera_target_snake_id = player_snake_id
 	_set_match_state(&"running")
 
 func stop_match() -> void:
 	_camera_target_snake_id = &""
 	_set_match_state(&"stopped")
+
+func _update_dynamic_difficulty(delta: float) -> void:
+	if _camera_target_snake_id == &"":
+		return
+	if not snake_manager.has_snake(_camera_target_snake_id):
+		return
+
+	_difficulty_check_cooldown -= delta
+	if _difficulty_check_cooldown > 0.0:
+		return
+	_difficulty_check_cooldown = max(difficulty_tick_interval, 0.1)
+
+	var player_score: int = snake_manager.get_score(_camera_target_snake_id)
+	var raw_level: int = int(player_score / max(_score_per_level, 1))
+	var new_level: int = clampi(raw_level, 0, _max_difficulty_level)
+	if new_level == _difficulty_level:
+		return
+
+	_difficulty_level = new_level
+	var target_enemy_count: int = clampi(_base_enemy_count + _difficulty_level, 0, _max_enemy_count)
+	snake_manager.set_target_enemy_count(target_enemy_count)
+
+	var normalized_level: float = 0.0
+	if _max_difficulty_level > 0:
+		normalized_level = float(_difficulty_level) / float(_max_difficulty_level)
+	snake_manager.set_ai_difficulty_scalars(1.0 + normalized_level * 0.6, 1.0 + normalized_level * 0.5)
+	camera_follow_lerp_speed = lerp(_base_camera_follow_lerp_speed, _base_camera_follow_lerp_speed + 3.0, normalized_level)
+	difficulty_changed.emit(_difficulty_level, target_enemy_count)
 
 func _on_food_eaten(snake_id: StringName, amount: int) -> void:
 	food_eaten.emit(snake_id, amount)
@@ -86,6 +147,11 @@ func _on_snake_died(snake_id: StringName, reason: StringName) -> void:
 
 	if snake_id == _camera_target_snake_id:
 		_camera_target_snake_id = &""
+		_remaining_lives = max(_remaining_lives - 1, 0)
+		lives_changed.emit(_remaining_lives)
+		if _remaining_lives <= 0:
+			_set_match_state(&"ended")
+			return
 		_set_match_state(&"respawning")
 		call_deferred("_respawn_player")
 

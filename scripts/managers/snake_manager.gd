@@ -32,6 +32,8 @@ var _player_snake_id: StringName = &""
 var _target_enemy_count: int = 0
 var _next_enemy_index: int = 1
 var _food_manager: Node2D
+var _aggression_scale: float = 1.0
+var _boost_scale: float = 1.0
 
 func _ready() -> void:
 	_rng.randomize()
@@ -59,9 +61,11 @@ func spawn_player_snake() -> StringName:
 	return snake_id
 
 func spawn_enemy_snakes(count: int) -> void:
+	set_target_enemy_count(count)
+
+func set_target_enemy_count(count: int) -> void:
 	_target_enemy_count = max(count, 0)
-	while _enemy_ids.size() < _target_enemy_count:
-		_spawn_next_enemy()
+	_sync_enemy_count()
 
 func set_movement_config(config: Resource) -> void:
 	movement_config = config
@@ -77,6 +81,10 @@ func set_food_manager(food_manager: Node2D) -> void:
 
 func set_world_radius(radius: float) -> void:
 	world_radius = max(radius, 200.0)
+
+func set_ai_difficulty_scalars(aggression_scale: float, boost_scale: float) -> void:
+	_aggression_scale = clamp(aggression_scale, 0.5, 2.0)
+	_boost_scale = clamp(boost_scale, 0.5, 2.0)
 
 func apply_food_gain(snake_id: StringName, amount: int) -> void:
 	if amount <= 0:
@@ -97,13 +105,14 @@ func kill_snake(snake_id: StringName, reason: StringName) -> void:
 		push_warning("Unknown snake_id for death event: %s" % snake_id)
 		return
 
+	var allow_mass_drop: bool = reason != &"despawned"
 	var was_enemy: bool = _enemy_ids.has(snake_id)
 	var drop_position: Vector2 = Vector2.ZERO
 	var drop_amount: int = 0
 	if _snake_nodes.has(snake_id):
 		var snake_node: Node2D = _snake_nodes[snake_id]
 		drop_position = snake_node.global_position
-		if snake_node.has_method("get_body_length"):
+		if allow_mass_drop and snake_node.has_method("get_body_length"):
 			var body_length_value: Variant = snake_node.call("get_body_length")
 			if body_length_value is float or body_length_value is int:
 				var growth_unit: float = max(growth_per_food, 1.0)
@@ -121,12 +130,12 @@ func kill_snake(snake_id: StringName, reason: StringName) -> void:
 		_enemy_targets.erase(snake_id)
 		_enemy_retarget_cooldown.erase(snake_id)
 
-	if drop_amount > 0:
+	if allow_mass_drop and drop_amount > 0:
 		snake_mass_dropped.emit(drop_position, drop_amount)
 
 	snake_died.emit(snake_id, reason)
 
-	if was_enemy and _enemy_ids.size() < _target_enemy_count:
+	if was_enemy and reason != &"despawned" and _enemy_ids.size() < _target_enemy_count:
 		_spawn_next_enemy()
 
 func has_snake(snake_id: StringName) -> bool:
@@ -157,6 +166,13 @@ func get_player_body_length() -> float:
 		if value is float or value is int:
 			return float(value)
 	return 0.0
+
+func _sync_enemy_count() -> void:
+	while _enemy_ids.size() < _target_enemy_count:
+		_spawn_next_enemy()
+	while _enemy_ids.size() > _target_enemy_count:
+		var enemy_id: StringName = _enemy_ids[_enemy_ids.size() - 1]
+		kill_snake(enemy_id, &"despawned")
 
 func _spawn_next_enemy() -> void:
 	var enemy_id: StringName = StringName("enemy_%d" % _next_enemy_index)
@@ -244,7 +260,7 @@ func _retarget_enemy(enemy_id: StringName, enemy_position: Vector2, has_player: 
 			if nearest_value is Vector2:
 				nearest_food = nearest_value
 
-		var aggression: float = clamp(_ai_float("aggression", 0.45), 0.0, 1.0)
+		var aggression: float = clamp(_ai_float("aggression", 0.45) * _aggression_scale, 0.0, 1.0)
 		var should_chase: bool = false
 		if has_player and enemy_position.distance_to(player_position) <= vision_radius:
 			should_chase = _rng.randf() <= aggression
@@ -278,7 +294,7 @@ func _apply_enemy_steering(enemy_id: StringName, enemy_node: Node2D, target_posi
 
 	var turn_input: float = clamp(heading.cross(desired_direction) * 6.0, -1.0, 1.0)
 	var state: StringName = _enemy_states.get(enemy_id, STATE_PATROL)
-	var boost_probability: float = clamp(_ai_float("boost_probability", 0.12), 0.0, 1.0)
+	var boost_probability: float = clamp(_ai_float("boost_probability", 0.12) * _boost_scale, 0.0, 1.0)
 	var wants_boost: bool = false
 	if state == STATE_CHASE or state == STATE_AVOID:
 		wants_boost = _rng.randf() <= max(boost_probability, 0.25)

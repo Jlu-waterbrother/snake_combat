@@ -5,6 +5,9 @@
 [resource]
 script = ExtResource("1")
 enemy_count = 6
+max_enemy_count = 10
+score_per_difficulty_level = 20
+max_difficulty_level = 5
 vision_radius = 540.0
 aggression = 0.45
 boost_probability = 0.12
