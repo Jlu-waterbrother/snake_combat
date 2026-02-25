@@ -4,27 +4,103 @@ class_name FoodManager
 signal food_spawned(food_id: int, world_position: Vector2)
 signal food_eaten(snake_id: StringName, amount: int)
 
+@export var food_scene: PackedScene
 @export var initial_food_count: int = 64
 @export var spawn_radius: float = 1400.0
+@export var safe_spawn_radius: float = 180.0
+@export var respawn_on_consume: bool = true
+@export var spawn_attempts: int = 8
 
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _next_food_id: int = 1
+var _active_food: Array[Area2D] = []
+var _inactive_food: Array[Area2D] = []
 
 func bootstrap_food() -> void:
-	_rng.randomize()
-	for _i: int in range(initial_food_count):
-		_spawn_food_point()
-
-func notify_food_eaten(snake_id: StringName, amount: int = 1) -> void:
-	if amount <= 0:
-		push_warning("Food amount must be positive when eaten.")
+	if food_scene == null:
+		push_error("food_scene is not assigned on FoodManager.")
 		return
+
+	_rng.randomize()
+	_ensure_pool_capacity(initial_food_count)
+	for _i: int in range(initial_food_count):
+		_spawn_food_from_pool()
+
+func _ensure_pool_capacity(target_count: int) -> void:
+	while _active_food.size() + _inactive_food.size() < target_count:
+		var food_node := food_scene.instantiate() as Area2D
+		if food_node == null:
+			push_error("food_scene must instantiate to Area2D.")
+			return
+
+		add_child(food_node)
+		if food_node.has_signal("consumed"):
+			food_node.consumed.connect(_on_food_consumed.bind(food_node))
+		else:
+			push_error("Food scene script must define signal 'consumed'.")
+			return
+
+		if food_node.has_method("deactivate"):
+			food_node.call("deactivate")
+		_inactive_food.append(food_node)
+
+func _spawn_food_from_pool() -> void:
+	var food_node: Area2D = _acquire_food_node()
+	if food_node == null:
+		return
+
+	var point: Vector2 = _sample_spawn_point()
+	var food_id: int = _next_food_id
+	_next_food_id += 1
+
+	if food_node.has_method("configure"):
+		food_node.call("configure", food_id, point, 1)
+	else:
+		food_node.global_position = point
+		food_node.visible = true
+		food_node.monitoring = true
+
+	_active_food.append(food_node)
+	food_spawned.emit(food_id, point)
+
+func _acquire_food_node() -> Area2D:
+	if _inactive_food.is_empty():
+		_ensure_pool_capacity(_active_food.size() + 1)
+		if _inactive_food.is_empty():
+			push_error("Unable to allocate food pool node.")
+			return null
+
+	return _inactive_food.pop_back()
+
+func _sample_spawn_point() -> Vector2:
+	var sampled: Vector2 = Vector2.RIGHT * safe_spawn_radius
+	for _attempt: int in range(max(spawn_attempts, 1)):
+		sampled = _random_point_in_radius(spawn_radius)
+		if sampled.length() >= safe_spawn_radius:
+			return sampled
+
+	if sampled == Vector2.ZERO:
+		return Vector2.RIGHT * safe_spawn_radius
+	return sampled.normalized() * safe_spawn_radius
+
+func _random_point_in_radius(radius_limit: float) -> Vector2:
+	var angle: float = _rng.randf_range(0.0, TAU)
+	var radius: float = sqrt(_rng.randf()) * radius_limit
+	return Vector2(cos(angle), sin(angle)) * radius
+
+func _on_food_consumed(snake_id: StringName, amount: int, food_node: Area2D) -> void:
+	if not _active_food.has(food_node):
+		return
+
+	_active_food.erase(food_node)
+	if food_node.has_method("deactivate"):
+		food_node.call("deactivate")
+	else:
+		food_node.visible = false
+		food_node.monitoring = false
+
+	_inactive_food.append(food_node)
 	food_eaten.emit(snake_id, amount)
 
-func _spawn_food_point() -> void:
-	var angle: float = _rng.randf_range(0.0, TAU)
-	var radius: float = sqrt(_rng.randf()) * spawn_radius
-	var point: Vector2 = Vector2(cos(angle), sin(angle)) * radius
-
-	food_spawned.emit(_next_food_id, point)
-	_next_food_id += 1
+	if respawn_on_consume:
+		_spawn_food_from_pool()

@@ -7,6 +7,7 @@ signal score_changed(snake_id: StringName, score: int)
 
 @export var player_snake_scene: PackedScene
 @export var movement_config: Resource
+@export var growth_per_food: float = 8.0
 
 var _scores: Dictionary[StringName, int] = {}
 var _snake_nodes: Dictionary[StringName, Node2D] = {}
@@ -28,6 +29,8 @@ func spawn_player_snake() -> StringName:
 
 	if snake_node.has_method("set_movement_config"):
 		snake_node.call("set_movement_config", movement_config)
+	if snake_node.has_method("set_snake_id"):
+		snake_node.call("set_snake_id", snake_id)
 
 	add_child(snake_node)
 	snake_node.global_position = Vector2.ZERO
@@ -54,6 +57,9 @@ func apply_food_gain(snake_id: StringName, amount: int) -> void:
 
 	_scores[snake_id] += amount
 	score_changed.emit(snake_id, _scores[snake_id])
+
+	if _snake_nodes.has(snake_id) and _snake_nodes[snake_id].has_method("grow_by"):
+		_snake_nodes[snake_id].call("grow_by", growth_per_food * float(amount))
 
 func kill_snake(snake_id: StringName, reason: StringName) -> void:
 	if not _scores.has(snake_id):

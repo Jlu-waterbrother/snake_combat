@@ -6,4 +6,5 @@
 script = ExtResource("1")
 initial_food_count = 64
 spawn_radius = 1400.0
+safe_spawn_radius = 180.0
 respawn_on_consume = true

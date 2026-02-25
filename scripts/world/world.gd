@@ -27,6 +27,8 @@ func _ready() -> void:
 	if food_config != null:
 		food_manager.initial_food_count = food_config.initial_food_count
 		food_manager.spawn_radius = food_config.spawn_radius
+		food_manager.safe_spawn_radius = food_config.safe_spawn_radius
+		food_manager.respawn_on_consume = food_config.respawn_on_consume
 
 	food_manager.bootstrap_food()
 

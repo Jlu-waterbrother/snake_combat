@@ -11,7 +11,10 @@ extends Node2D
 @export var head_color: Color = Color(0.22, 0.84, 0.31)
 
 @onready var body_line: Line2D = $BodyLine
+@onready var head_area: Area2D = $HeadArea
+@onready var head_collision_shape: CollisionShape2D = $HeadArea/CollisionShape2D
 
+var snake_id: StringName = &"player"
 var _heading: Vector2 = Vector2.RIGHT
 var _trail_points: Array[Vector2] = []
 var _segment_spacing: float = 10.0
@@ -21,6 +24,11 @@ func _ready() -> void:
 	if _heading == Vector2.ZERO:
 		_heading = Vector2.RIGHT
 
+	head_area.collision_layer = 4
+	head_area.collision_mask = 8
+	head_area.add_to_group("snake_head")
+	_sync_head_collision()
+
 	_trail_points = [global_position, global_position - _heading * body_length]
 	_sync_body_line()
 	queue_redraw()
@@ -29,10 +37,14 @@ func _draw() -> void:
 	draw_circle(Vector2.ZERO, head_radius, head_color)
 
 func _physics_process(delta: float) -> void:
-	var base_speed: float = _config_number("base_speed", default_base_speed)
-	var boost_speed: float = _config_number("boost_speed", default_boost_speed)
+	var base_speed_raw: float = _config_number("base_speed", default_base_speed)
+	var boost_speed_raw: float = _config_number("boost_speed", default_boost_speed)
 	var turn_rate_deg: float = _config_number("turn_rate_deg_per_second", default_turn_rate_deg_per_second)
 	_segment_spacing = max(_config_number("segment_spacing", default_segment_spacing), 1.0)
+
+	var growth_ratio: float = max(body_length / 180.0, 1.0)
+	var base_speed: float = base_speed_raw / (1.0 + (growth_ratio - 1.0) * 0.15)
+	var boost_speed: float = boost_speed_raw / (1.0 + (growth_ratio - 1.0) * 0.1)
 
 	var turn_input: float = Input.get_axis("turn_left", "turn_right")
 	_heading = _heading.rotated(deg_to_rad(turn_rate_deg) * turn_input * delta).normalized()
@@ -46,6 +58,18 @@ func _physics_process(delta: float) -> void:
 
 func set_movement_config(config: Resource) -> void:
 	movement_config = config
+
+func set_snake_id(new_snake_id: StringName) -> void:
+	snake_id = new_snake_id
+	var head := get_node_or_null("HeadArea") as Area2D
+	if head != null:
+		head.set_meta("snake_id", String(snake_id))
+
+func grow_by(length_delta: float) -> void:
+	if length_delta <= 0.0:
+		push_warning("Snake growth delta must be positive.")
+		return
+	body_length += length_delta
 
 func _append_trail_point(world_point: Vector2) -> void:
 	if _trail_points.is_empty():
@@ -89,6 +113,12 @@ func _sync_body_line() -> void:
 	for world_point: Vector2 in _trail_points:
 		local_points.append(to_local(world_point))
 	body_line.points = local_points
+
+func _sync_head_collision() -> void:
+	var shape := CircleShape2D.new()
+	shape.radius = head_radius
+	head_collision_shape.shape = shape
+	head_area.set_meta("snake_id", String(snake_id))
 
 func _config_number(property_name: String, fallback: float) -> float:
 	if movement_config == null:
