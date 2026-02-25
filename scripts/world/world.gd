@@ -30,6 +30,7 @@ var _max_enemy_count: int = 0
 var _score_per_level: int = 20
 var _max_difficulty_level: int = 5
 var _base_camera_follow_lerp_speed: float = 8.0
+var _pre_pause_state: StringName = &"running"
 
 func _ready() -> void:
 	snake_manager.snake_spawned.connect(_on_snake_spawned)
@@ -101,6 +102,16 @@ func stop_match() -> void:
 	_camera_target_snake_id = &""
 	_set_match_state(&"stopped")
 
+func set_pause_state(paused: bool) -> void:
+	if paused:
+		_set_match_state(&"paused")
+		return
+
+	if _pre_pause_state == &"paused":
+		_set_match_state(&"running")
+		return
+	_set_match_state(_pre_pause_state)
+
 func _update_dynamic_difficulty(delta: float) -> void:
 	if _camera_target_snake_id == &"":
 		return
@@ -168,6 +179,8 @@ func _on_enemy_state_changed(snake_id: StringName, state: StringName) -> void:
 	enemy_state_changed.emit(snake_id, state)
 
 func _set_match_state(state: StringName) -> void:
+	if state != &"paused":
+		_pre_pause_state = state
 	match_state_changed.emit(state)
 	var game_state := get_node_or_null("/root/GameState")
 	if game_state != null:
