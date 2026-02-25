@@ -1,5 +1,7 @@
 .godot/
 .import/
+*.import
+*.uid
 .copilot/
 data/
 logs/
