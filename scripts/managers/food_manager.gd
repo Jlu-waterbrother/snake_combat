@@ -36,6 +36,23 @@ func spawn_food_burst(center_position: Vector2, amount: int) -> void:
 		var offset: Vector2 = _random_point_in_radius(burst_radius)
 		_spawn_food_at_position(center_position + offset, 1)
 
+func get_nearest_food_position(origin: Vector2, max_distance: float) -> Vector2:
+	var nearest: Vector2 = Vector2.INF
+	var best_distance_squared: float = max_distance * max_distance
+
+	for food_node: Area2D in _active_food:
+		if not is_instance_valid(food_node) or not food_node.visible:
+			continue
+		var distance_squared: float = origin.distance_squared_to(food_node.global_position)
+		if distance_squared < best_distance_squared:
+			best_distance_squared = distance_squared
+			nearest = food_node.global_position
+
+	return nearest
+
+func get_active_food_count() -> int:
+	return _active_food.size()
+
 func _ensure_pool_capacity(target_count: int) -> void:
 	while _active_food.size() + _inactive_food.size() < target_count:
 		var food_node := food_scene.instantiate() as Area2D

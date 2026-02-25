@@ -2,6 +2,11 @@ extends Node2D
 
 signal snake_died(reason: StringName)
 
+enum ControlMode {
+	PLAYER,
+	AI,
+}
+
 @export var movement_config: Resource
 @export var default_base_speed: float = 220.0
 @export var default_boost_speed: float = 340.0
@@ -14,6 +19,7 @@ signal snake_died(reason: StringName)
 @export var self_collision_radius: float = 9.0
 @export var self_collision_min_body_length: float = 260.0
 @export var self_collision_sample_step: int = 2
+@export var control_mode: ControlMode = ControlMode.PLAYER
 
 @onready var body_line: Line2D = $BodyLine
 @onready var head_area: Area2D = $HeadArea
@@ -24,6 +30,8 @@ var _heading: Vector2 = Vector2.RIGHT
 var _trail_points: Array[Vector2] = []
 var _segment_spacing: float = 10.0
 var _is_dead: bool = false
+var _ai_turn_input: float = 0.0
+var _ai_boosting: bool = false
 
 func _ready() -> void:
 	_heading = initial_heading.normalized()
@@ -34,6 +42,7 @@ func _ready() -> void:
 	head_area.collision_mask = 8
 	head_area.add_to_group("snake_head")
 	_sync_head_collision()
+	_sync_body_style()
 
 	_trail_points = [global_position, global_position - _heading * body_length]
 	_sync_body_line()
@@ -55,10 +64,10 @@ func _physics_process(delta: float) -> void:
 	var base_speed: float = base_speed_raw / (1.0 + (growth_ratio - 1.0) * 0.15)
 	var boost_speed: float = boost_speed_raw / (1.0 + (growth_ratio - 1.0) * 0.1)
 
-	var turn_input: float = Input.get_axis("turn_left", "turn_right")
+	var turn_input: float = _read_turn_input()
 	_heading = _heading.rotated(deg_to_rad(turn_rate_deg) * turn_input * delta).normalized()
 
-	var speed: float = boost_speed if Input.is_action_pressed("boost") else base_speed
+	var speed: float = boost_speed if _wants_boost() else base_speed
 	global_position += _heading * speed * delta
 
 	_append_trail_point(global_position)
@@ -72,11 +81,27 @@ func _physics_process(delta: float) -> void:
 func set_movement_config(config: Resource) -> void:
 	movement_config = config
 
+func set_control_mode(mode: int) -> void:
+	if mode != ControlMode.PLAYER and mode != ControlMode.AI:
+		push_warning("Unsupported control mode for snake: %s" % mode)
+		return
+	control_mode = mode
+
+func set_ai_command(turn_input: float, boosting: bool) -> void:
+	_ai_turn_input = clamp(turn_input, -1.0, 1.0)
+	_ai_boosting = boosting
+
 func set_snake_id(new_snake_id: StringName) -> void:
 	snake_id = new_snake_id
 	var head := get_node_or_null("HeadArea") as Area2D
 	if head != null:
 		head.set_meta("snake_id", String(snake_id))
+
+func set_head_color(new_head_color: Color) -> void:
+	head_color = new_head_color
+	if is_inside_tree():
+		_sync_body_style()
+		queue_redraw()
 
 func grow_by(length_delta: float) -> void:
 	if length_delta <= 0.0:
@@ -86,6 +111,19 @@ func grow_by(length_delta: float) -> void:
 
 func get_body_length() -> float:
 	return body_length
+
+func get_heading() -> Vector2:
+	return _heading
+
+func _read_turn_input() -> float:
+	if control_mode == ControlMode.AI:
+		return _ai_turn_input
+	return Input.get_axis("turn_left", "turn_right")
+
+func _wants_boost() -> bool:
+	if control_mode == ControlMode.AI:
+		return _ai_boosting
+	return Input.is_action_pressed("boost")
 
 func _append_trail_point(world_point: Vector2) -> void:
 	if _trail_points.is_empty():
@@ -153,6 +191,11 @@ func _sync_head_collision() -> void:
 	shape.radius = head_radius
 	head_collision_shape.shape = shape
 	head_area.set_meta("snake_id", String(snake_id))
+
+func _sync_body_style() -> void:
+	if body_line == null:
+		return
+	body_line.default_color = head_color.darkened(0.2)
 
 func _config_number(property_name: String, fallback: float) -> float:
 	if movement_config == null:

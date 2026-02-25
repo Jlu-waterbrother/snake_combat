@@ -5,6 +5,8 @@
 [resource]
 script = ExtResource("1")
 enemy_count = 6
-vision_radius = 520.0
-aggression = 0.4
-boost_probability = 0.08
+vision_radius = 540.0
+aggression = 0.45
+boost_probability = 0.12
+avoid_boundary_ratio = 0.8
+retarget_interval = 0.2

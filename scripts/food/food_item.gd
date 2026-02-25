@@ -28,13 +28,12 @@ func configure(new_food_id: int, world_position: Vector2, new_amount: int) -> vo
 	amount = max(new_amount, 1)
 	global_position = world_position
 	visible = true
-	monitoring = true
-	monitorable = true
-	_sync_collision_radius()
+	set_deferred("monitoring", true)
+	set_deferred("monitorable", true)
 
 func deactivate() -> void:
-	monitoring = false
-	monitorable = false
+	set_deferred("monitoring", false)
+	set_deferred("monitorable", false)
 	visible = false
 
 func _on_area_entered(area: Area2D) -> void:

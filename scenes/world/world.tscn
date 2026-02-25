@@ -18,7 +18,10 @@ ai_config = ExtResource("6")
 [node name="SnakeManager" type="Node" parent="."]
 script = ExtResource("2")
 player_snake_scene = ExtResource("7")
+enemy_snake_scene = ExtResource("7")
 movement_config = ExtResource("4")
+ai_config = ExtResource("6")
+world_radius = 2200.0
 
 [node name="FoodManager" type="Node2D" parent="."]
 script = ExtResource("3")
