@@ -169,7 +169,10 @@ func get_player_body_length() -> float:
 
 func _sync_enemy_count() -> void:
 	while _enemy_ids.size() < _target_enemy_count:
+		var enemy_count_before: int = _enemy_ids.size()
 		_spawn_next_enemy()
+		if _enemy_ids.size() == enemy_count_before:
+			break
 	while _enemy_ids.size() > _target_enemy_count:
 		var enemy_id: StringName = _enemy_ids[_enemy_ids.size() - 1]
 		kill_snake(enemy_id, &"despawned")
@@ -232,6 +235,8 @@ func _update_enemy_ai(delta: float) -> void:
 	if has_player:
 		player_position = _snake_nodes[_player_snake_id].global_position
 
+	var retarget_origins: Dictionary = {}
+	var retarget_interval: float = max(_ai_float("retarget_interval", 0.2), 0.05)
 	for enemy_id: StringName in _enemy_ids:
 		if not _snake_nodes.has(enemy_id):
 			continue
@@ -239,13 +244,35 @@ func _update_enemy_ai(delta: float) -> void:
 		var cooldown: float = _enemy_retarget_cooldown.get(enemy_id, 0.0) - delta
 		_enemy_retarget_cooldown[enemy_id] = cooldown
 		if cooldown <= 0.0:
-			_retarget_enemy(enemy_id, enemy_node.global_position, has_player, player_position)
-			_enemy_retarget_cooldown[enemy_id] = max(_ai_float("retarget_interval", 0.2), 0.05)
+			retarget_origins[enemy_id] = enemy_node.global_position
+			_enemy_retarget_cooldown[enemy_id] = retarget_interval
 
+	var vision_radius: float = _ai_float("vision_radius", 520.0)
+	var nearest_food_by_enemy: Dictionary = {}
+	if not retarget_origins.is_empty() and _food_manager != null and _food_manager.has_method("get_nearest_food_positions"):
+		var nearest_value: Variant = _food_manager.call("get_nearest_food_positions", retarget_origins, vision_radius)
+		if nearest_value is Dictionary:
+			nearest_food_by_enemy = nearest_value
+
+	for enemy_id: StringName in _enemy_ids:
+		if not _snake_nodes.has(enemy_id):
+			continue
+		if retarget_origins.has(enemy_id):
+			var enemy_position_value: Variant = retarget_origins.get(enemy_id, Vector2.ZERO)
+			var nearest_food_value: Variant = nearest_food_by_enemy.get(enemy_id, Vector2.INF)
+			var enemy_position: Vector2 = Vector2.ZERO
+			if enemy_position_value is Vector2:
+				enemy_position = enemy_position_value
+			var nearest_food: Vector2 = Vector2.INF
+			if nearest_food_value is Vector2:
+				nearest_food = nearest_food_value
+			_retarget_enemy(enemy_id, enemy_position, has_player, player_position, nearest_food, vision_radius)
+
+		var enemy_node: Node2D = _snake_nodes[enemy_id]
 		var target_position: Vector2 = _enemy_targets.get(enemy_id, enemy_node.global_position + Vector2.RIGHT * 120.0)
 		_apply_enemy_steering(enemy_id, enemy_node, target_position)
 
-func _retarget_enemy(enemy_id: StringName, enemy_position: Vector2, has_player: bool, player_position: Vector2) -> void:
+func _retarget_enemy(enemy_id: StringName, enemy_position: Vector2, has_player: bool, player_position: Vector2, nearest_food: Vector2, vision_radius: float) -> void:
 	var state: StringName = STATE_PATROL
 	var target: Vector2 = enemy_position + _random_direction() * 240.0
 	var avoid_ratio: float = clamp(_ai_float("avoid_boundary_ratio", 0.8), 0.5, 0.95)
@@ -253,13 +280,6 @@ func _retarget_enemy(enemy_id: StringName, enemy_position: Vector2, has_player: 
 		state = STATE_AVOID
 		target = Vector2.ZERO
 	else:
-		var vision_radius: float = _ai_float("vision_radius", 520.0)
-		var nearest_food: Vector2 = Vector2.INF
-		if _food_manager != null and _food_manager.has_method("get_nearest_food_position"):
-			var nearest_value: Variant = _food_manager.call("get_nearest_food_position", enemy_position, vision_radius)
-			if nearest_value is Vector2:
-				nearest_food = nearest_value
-
 		var aggression: float = clamp(_ai_float("aggression", 0.45) * _aggression_scale, 0.0, 1.0)
 		var should_chase: bool = false
 		if has_player and enemy_position.distance_to(player_position) <= vision_radius:
@@ -330,7 +350,7 @@ func _check_head_to_head_collision() -> void:
 
 			var snake_a_position: Vector2 = _snake_nodes[snake_a_id].global_position
 			var snake_b_position: Vector2 = _snake_nodes[snake_b_id].global_position
-			if snake_a_position.distance_to(snake_b_position) > 18.0:
+			if snake_a_position.distance_squared_to(snake_b_position) > 324.0:
 				continue
 
 			var length_a: float = _snake_length(snake_a_id)

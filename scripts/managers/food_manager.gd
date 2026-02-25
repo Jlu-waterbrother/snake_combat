@@ -37,18 +37,44 @@ func spawn_food_burst(center_position: Vector2, amount: int) -> void:
 		_spawn_food_at_position(center_position + offset, 1)
 
 func get_nearest_food_position(origin: Vector2, max_distance: float) -> Vector2:
-	var nearest: Vector2 = Vector2.INF
-	var best_distance_squared: float = max_distance * max_distance
+	var query: Dictionary = {&"single": origin}
+	var nearest_map: Dictionary = get_nearest_food_positions(query, max_distance)
+	var nearest_value: Variant = nearest_map.get(&"single", Vector2.INF)
+	if nearest_value is Vector2:
+		return nearest_value
+	return Vector2.INF
 
+func get_nearest_food_positions(origins: Dictionary, max_distance: float) -> Dictionary:
+	var nearest_map: Dictionary = {}
+	if origins.is_empty():
+		return nearest_map
+
+	var max_distance_squared: float = max_distance * max_distance
+	var best_distance_squared: Dictionary = {}
+	for origin_key: Variant in origins.keys():
+		nearest_map[origin_key] = Vector2.INF
+		best_distance_squared[origin_key] = max_distance_squared
+
+	var active_positions: PackedVector2Array = PackedVector2Array()
 	for food_node: Area2D in _active_food:
 		if not is_instance_valid(food_node) or not food_node.visible:
 			continue
-		var distance_squared: float = origin.distance_squared_to(food_node.global_position)
-		if distance_squared < best_distance_squared:
-			best_distance_squared = distance_squared
-			nearest = food_node.global_position
+		active_positions.append(food_node.global_position)
 
-	return nearest
+	for food_position: Vector2 in active_positions:
+		for origin_key: Variant in origins.keys():
+			var origin_value: Variant = origins.get(origin_key, Vector2.ZERO)
+			if origin_value is not Vector2:
+				continue
+
+			var best_value: Variant = best_distance_squared.get(origin_key, max_distance_squared)
+			var best_value_float: float = float(best_value)
+			var distance_squared: float = (origin_value as Vector2).distance_squared_to(food_position)
+			if distance_squared < best_value_float:
+				best_distance_squared[origin_key] = distance_squared
+				nearest_map[origin_key] = food_position
+
+	return nearest_map
 
 func get_active_food_count() -> int:
 	return _active_food.size()
