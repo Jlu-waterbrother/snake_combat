@@ -33,7 +33,7 @@ func spawn_food_burst(center_position: Vector2, amount: int) -> void:
 
 	var burst_radius: float = min(spawn_radius * 0.05, 120.0)
 	for _i: int in range(amount):
-		var offset: Vector2 = _random_point_in_radius(burst_radius)
+		var offset: Vector2 = Vector2.ZERO if amount == 1 else _random_point_in_radius(burst_radius)
 		_spawn_food_at_position(center_position + offset, 1)
 
 func get_nearest_food_position(origin: Vector2, max_distance: float) -> Vector2:

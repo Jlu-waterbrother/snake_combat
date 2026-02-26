@@ -44,7 +44,7 @@ func _ready() -> void:
 	_sync_head_collision()
 	_sync_body_style()
 
-	_trail_points = [global_position, global_position - _heading * body_length]
+	_trail_points = [global_position - _heading * body_length, global_position]
 	_sync_body_line()
 	queue_redraw()
 
@@ -112,6 +112,12 @@ func grow_by(length_delta: float) -> void:
 func get_body_length() -> float:
 	return body_length
 
+func get_body_points() -> PackedVector2Array:
+	var points: PackedVector2Array = PackedVector2Array()
+	for trail_point: Vector2 in _trail_points:
+		points.append(trail_point)
+	return points
+
 func get_heading() -> Vector2:
 	return _heading
 
@@ -152,10 +158,18 @@ func _append_trail_point(world_point: Vector2) -> void:
 		return
 
 	var last_point: Vector2 = _trail_points[_trail_points.size() - 1]
-	if last_point.distance_to(world_point) >= _segment_spacing:
-		_trail_points.append(world_point)
-	else:
-		_trail_points[_trail_points.size() - 1] = world_point
+	var distance: float = last_point.distance_to(world_point)
+	if distance <= 0.001:
+		return
+
+	var direction: Vector2 = (world_point - last_point) / distance
+	var spacing: float = max(_segment_spacing, 1.0)
+	var traveled: float = spacing
+	while traveled < distance:
+		_trail_points.append(last_point + direction * traveled)
+		traveled += spacing
+
+	_trail_points.append(world_point)
 
 func _trim_trail_to_length(max_length: float) -> void:
 	if _trail_points.size() < 2:

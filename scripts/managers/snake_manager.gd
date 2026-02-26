@@ -113,6 +113,7 @@ func kill_snake(snake_id: StringName, reason: StringName) -> void:
 	var was_enemy: bool = _enemy_ids.has(snake_id)
 	var drop_position: Vector2 = Vector2.ZERO
 	var drop_amount: int = 0
+	var drop_points: PackedVector2Array = PackedVector2Array()
 	if _snake_nodes.has(snake_id):
 		var snake_node: Node2D = _snake_nodes[snake_id]
 		drop_position = snake_node.global_position
@@ -121,6 +122,10 @@ func kill_snake(snake_id: StringName, reason: StringName) -> void:
 			if body_length_value is float or body_length_value is int:
 				var growth_unit: float = max(growth_per_food, 1.0)
 				drop_amount = int(max(round(float(body_length_value) / growth_unit), 4.0))
+		if allow_mass_drop and snake_node.has_method("get_body_points"):
+			var drop_points_value: Variant = snake_node.call("get_body_points")
+			if drop_points_value is PackedVector2Array:
+				drop_points = drop_points_value
 
 		snake_node.queue_free()
 		_snake_nodes.erase(snake_id)
@@ -135,7 +140,7 @@ func kill_snake(snake_id: StringName, reason: StringName) -> void:
 		_enemy_retarget_cooldown.erase(snake_id)
 
 	if allow_mass_drop and drop_amount > 0:
-		snake_mass_dropped.emit(drop_position, drop_amount)
+		_emit_mass_drop(drop_points, drop_position, drop_amount)
 
 	snake_died.emit(snake_id, reason)
 
@@ -408,6 +413,31 @@ func _snake_length(snake_id: StringName) -> float:
 		if value is float or value is int:
 			return float(value)
 	return 0.0
+
+func _emit_mass_drop(drop_points: PackedVector2Array, fallback_position: Vector2, total_amount: int) -> void:
+	if total_amount <= 0:
+		return
+	if drop_points.is_empty():
+		snake_mass_dropped.emit(fallback_position, total_amount)
+		return
+
+	var point_count: int = min(drop_points.size(), total_amount)
+	if point_count <= 0:
+		snake_mass_dropped.emit(fallback_position, total_amount)
+		return
+
+	var denominator: float = float(max(point_count - 1, 1))
+	var max_index: int = drop_points.size() - 1
+	var base_amount: int = int(total_amount / point_count)
+	var remainder: int = total_amount % point_count
+
+	for i: int in range(point_count):
+		var ratio: float = float(i) / denominator
+		var point_index: int = int(round(ratio * float(max_index)))
+		point_index = clampi(point_index, 0, max_index)
+		var amount: int = base_amount + (1 if i < remainder else 0)
+		if amount > 0:
+			snake_mass_dropped.emit(drop_points[point_index], amount)
 
 func _random_direction() -> Vector2:
 	var angle: float = _rng.randf_range(0.0, TAU)
