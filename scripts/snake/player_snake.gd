@@ -10,6 +10,8 @@ enum ControlMode {
 @export var movement_config: Resource
 @export var default_base_speed: float = 220.0
 @export var default_boost_speed: float = 340.0
+@export var boost_body_drain_per_second: float = 18.0
+@export var min_body_length_for_boost: float = 120.0
 @export var default_turn_rate_deg_per_second: float = 300.0
 @export var default_segment_spacing: float = 10.0
 @export var body_length: float = 180.0
@@ -67,16 +69,16 @@ func _physics_process(delta: float) -> void:
 	var turn_input: float = _read_turn_input()
 	_heading = _heading.rotated(deg_to_rad(turn_rate_deg) * turn_input * delta).normalized()
 
-	var speed: float = boost_speed if _wants_boost() else base_speed
+	var wants_boost: bool = _wants_boost()
+	var can_boost: bool = _can_boost(wants_boost)
+	var speed: float = boost_speed if can_boost else base_speed
 	global_position += _heading * speed * delta
+	if can_boost:
+		body_length = max(body_length - boost_body_drain_per_second * delta, min_body_length_for_boost)
 
 	_append_trail_point(global_position)
 	_trim_trail_to_length(body_length)
 	_sync_body_line()
-
-	if _detect_self_collision():
-		_is_dead = true
-		snake_died.emit(&"self_collision")
 
 func set_movement_config(config: Resource) -> void:
 	movement_config = config
@@ -151,6 +153,13 @@ func _wants_boost() -> bool:
 	if control_mode == ControlMode.AI:
 		return _ai_boosting
 	return Input.is_action_pressed("boost")
+
+func _can_boost(wants_boost: bool) -> bool:
+	if not wants_boost:
+		return false
+	if boost_body_drain_per_second <= 0.0:
+		return false
+	return body_length > min_body_length_for_boost
 
 func _append_trail_point(world_point: Vector2) -> void:
 	if _trail_points.is_empty():
