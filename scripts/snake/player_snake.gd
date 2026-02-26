@@ -9,8 +9,8 @@ enum ControlMode {
 }
 
 @export var movement_config: Resource
-@export var default_base_speed: float = 220.0
-@export var default_boost_speed: float = 340.0
+@export var default_base_speed: float = 165.0
+@export var default_boost_speed: float = 255.0
 @export var boost_body_drain_per_second: float = 18.0
 @export var min_body_length_for_boost: float = 120.0
 @export var min_body_length: float = 80.0

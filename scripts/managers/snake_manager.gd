@@ -14,6 +14,10 @@ signal enemy_state_changed(snake_id: StringName, state: StringName)
 @export var growth_per_food: float = 8.0
 @export var enemy_spawn_radius_min: float = 420.0
 @export var enemy_spawn_radius_max: float = 980.0
+@export var enemy_spawn_attempts: int = 24
+@export var enemy_spawn_player_safe_radius: float = 420.0
+@export var enemy_spawn_front_block_dot: float = 0.2
+@export var player_respawn_invincibility_seconds: float = 3.0
 @export var world_radius: float = 2200.0
 @export var head_to_body_collision_radius: float = 8.0
 @export var head_to_body_ignore_points: int = 4
@@ -38,11 +42,13 @@ var _food_manager: Node2D
 var _aggression_scale: float = 1.0
 var _boost_scale: float = 1.0
 var _shed_length_remainder: Dictionary[StringName, float] = {}
+var _invincibility_remaining: Dictionary[StringName, float] = {}
 
 func _ready() -> void:
 	_rng.randomize()
 
 func _physics_process(delta: float) -> void:
+	_update_invincibility(delta)
 	_update_enemy_ai(delta)
 	_check_world_bounds()
 	_check_head_to_head_collision()
@@ -109,6 +115,8 @@ func kill_snake(snake_id: StringName, reason: StringName) -> void:
 	if not _scores.has(snake_id):
 		push_warning("Unknown snake_id for death event: %s" % snake_id)
 		return
+	if reason != &"despawned" and _is_snake_invincible(snake_id):
+		return
 
 	var allow_mass_drop: bool = reason != &"despawned"
 	var was_enemy: bool = _enemy_ids.has(snake_id)
@@ -133,6 +141,7 @@ func kill_snake(snake_id: StringName, reason: StringName) -> void:
 
 	_scores.erase(snake_id)
 	_shed_length_remainder.erase(snake_id)
+	_invincibility_remaining.erase(snake_id)
 	if snake_id == _player_snake_id:
 		_player_snake_id = &""
 	if was_enemy:
@@ -177,6 +186,20 @@ func get_player_body_length() -> float:
 		if value is float or value is int:
 			return float(value)
 	return 0.0
+
+func set_temporary_invincibility(snake_id: StringName, duration_seconds: float) -> void:
+	if not _snake_nodes.has(snake_id):
+		return
+	var duration: float = max(duration_seconds, 0.0)
+	if duration <= 0.0:
+		_invincibility_remaining.erase(snake_id)
+		return
+	_invincibility_remaining[snake_id] = duration
+
+func grant_player_respawn_invincibility() -> void:
+	if _player_snake_id == &"":
+		return
+	set_temporary_invincibility(_player_snake_id, player_respawn_invincibility_seconds)
 
 func _sync_enemy_count() -> void:
 	while _enemy_ids.size() < _target_enemy_count:
@@ -236,6 +259,46 @@ func _spawn_snake(snake_id: StringName, snake_scene: PackedScene, spawn_position
 func _sample_enemy_spawn_position() -> Vector2:
 	var min_radius: float = max(enemy_spawn_radius_min, 120.0)
 	var max_radius: float = max(enemy_spawn_radius_max, min_radius + 1.0)
+	var has_player: bool = _player_snake_id != &"" and _snake_nodes.has(_player_snake_id)
+	var player_position: Vector2 = Vector2.ZERO
+	var player_heading: Vector2 = Vector2.RIGHT
+	if has_player:
+		player_position = _snake_nodes[_player_snake_id].global_position
+		if _snake_nodes[_player_snake_id].has_method("get_heading"):
+			var heading_value: Variant = _snake_nodes[_player_snake_id].call("get_heading")
+			if heading_value is Vector2 and (heading_value as Vector2) != Vector2.ZERO:
+				player_heading = (heading_value as Vector2).normalized()
+
+	var front_dot_limit: float = clamp(enemy_spawn_front_block_dot, -1.0, 1.0)
+	var safe_radius: float = max(enemy_spawn_player_safe_radius, 0.0)
+	for _attempt: int in range(max(enemy_spawn_attempts, 1)):
+		var candidate: Vector2 = _sample_ring_spawn_position(min_radius, max_radius)
+		if not has_player:
+			return candidate
+
+		var to_candidate: Vector2 = candidate - player_position
+		if to_candidate.length() < safe_radius:
+			continue
+		if to_candidate == Vector2.ZERO:
+			continue
+		if to_candidate.normalized().dot(player_heading) > front_dot_limit:
+			continue
+		return candidate
+
+	if not has_player:
+		return _sample_ring_spawn_position(min_radius, max_radius)
+
+	var fallback_heading: Vector2 = -player_heading
+	if fallback_heading == Vector2.ZERO:
+		fallback_heading = _random_direction()
+	var fallback_distance: float = max(safe_radius, min_radius)
+	var fallback_point: Vector2 = player_position + fallback_heading.normalized() * fallback_distance
+	var max_world_radius: float = max(world_radius - 40.0, 120.0)
+	if fallback_point.length() > max_world_radius:
+		fallback_point = fallback_point.normalized() * max_world_radius
+	return fallback_point
+
+func _sample_ring_spawn_position(min_radius: float, max_radius: float) -> Vector2:
 	var angle: float = _rng.randf_range(0.0, TAU)
 	var radius: float = _rng.randf_range(min_radius, max_radius)
 	return Vector2(cos(angle), sin(angle)) * radius
@@ -428,6 +491,29 @@ func _snake_head_radius(snake_id: StringName) -> float:
 		if value is float or value is int:
 			return max(float(value), 0.0)
 	return 0.0
+
+func _update_invincibility(delta: float) -> void:
+	if _invincibility_remaining.is_empty():
+		return
+
+	var expired_ids: Array[StringName] = []
+	for snake_id: StringName in _invincibility_remaining.keys():
+		if not _snake_nodes.has(snake_id):
+			expired_ids.append(snake_id)
+			continue
+
+		var remaining: float = float(_invincibility_remaining.get(snake_id, 0.0)) - delta
+		if remaining <= 0.0:
+			expired_ids.append(snake_id)
+		else:
+			_invincibility_remaining[snake_id] = remaining
+
+	for snake_id: StringName in expired_ids:
+		_invincibility_remaining.erase(snake_id)
+
+func _is_snake_invincible(snake_id: StringName) -> bool:
+	var remaining: float = float(_invincibility_remaining.get(snake_id, 0.0))
+	return remaining > 0.0
 
 func _emit_mass_drop(drop_points: PackedVector2Array, fallback_position: Vector2, total_amount: int) -> void:
 	if total_amount <= 0:

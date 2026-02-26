@@ -205,4 +205,5 @@ func _respawn_player() -> void:
 		return
 
 	_camera_target_snake_id = player_snake_id
+	snake_manager.grant_player_respawn_invincibility()
 	_set_match_state(&"running")

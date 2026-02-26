@@ -4,7 +4,7 @@
 
 [resource]
 script = ExtResource("1")
-base_speed = 220.0
-boost_speed = 340.0
+base_speed = 165.0
+boost_speed = 255.0
 turn_rate_deg_per_second = 300.0
 segment_spacing = 10.0
