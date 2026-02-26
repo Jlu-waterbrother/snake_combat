@@ -14,6 +14,10 @@ signal difficulty_changed(level: int, enemy_target: int)
 @export var ai_config: Resource
 @export var camera_follow_lerp_speed: float = 8.0
 @export var world_radius: float = 2200.0
+@export var boundary_color: Color = Color(1.0, 0.2, 0.2, 0.95)
+@export var boundary_inner_color: Color = Color(1.0, 0.6, 0.2, 0.55)
+@export var boundary_line_width: float = 16.0
+@export var boundary_warning_band: float = 180.0
 @export var player_lives: int = 3
 @export var difficulty_tick_interval: float = 0.5
 
@@ -65,6 +69,14 @@ func _ready() -> void:
 		food_manager.respawn_on_consume = food_config.respawn_on_consume
 
 	food_manager.bootstrap_food()
+	queue_redraw()
+
+func _draw() -> void:
+	var radius: float = max(world_radius, 1.0)
+	var line_width: float = max(boundary_line_width, 2.0)
+	var warning_radius: float = max(radius - max(boundary_warning_band, 0.0), line_width)
+	draw_arc(Vector2.ZERO, radius, 0.0, TAU, 256, boundary_color, line_width, true)
+	draw_arc(Vector2.ZERO, warning_radius, 0.0, TAU, 256, boundary_inner_color, max(line_width * 0.5, 2.0), true)
 
 func _physics_process(delta: float) -> void:
 	_update_dynamic_difficulty(delta)

@@ -1,6 +1,7 @@
 extends Node2D
 
 signal snake_died(reason: StringName)
+signal mass_shed(world_position: Vector2, consumed_length: float)
 
 enum ControlMode {
 	PLAYER,
@@ -12,6 +13,9 @@ enum ControlMode {
 @export var default_boost_speed: float = 340.0
 @export var boost_body_drain_per_second: float = 18.0
 @export var min_body_length_for_boost: float = 120.0
+@export var min_body_length: float = 80.0
+@export var coiling_turn_threshold: float = 0.55
+@export var coiling_shrink_per_second: float = 8.0
 @export var default_turn_rate_deg_per_second: float = 300.0
 @export var default_segment_spacing: float = 10.0
 @export var body_length: float = 180.0
@@ -71,14 +75,24 @@ func _physics_process(delta: float) -> void:
 
 	var wants_boost: bool = _wants_boost()
 	var can_boost: bool = _can_boost(wants_boost)
+	var boost_length_loss: float = 0.0
 	var speed: float = boost_speed if can_boost else base_speed
 	global_position += _heading * speed * delta
 	if can_boost:
-		body_length = max(body_length - boost_body_drain_per_second * delta, min_body_length_for_boost)
+		var boost_min_length: float = max(min_body_length_for_boost, min_body_length)
+		var previous_length: float = body_length
+		body_length = max(body_length - boost_body_drain_per_second * delta, boost_min_length)
+		boost_length_loss = max(previous_length - body_length, 0.0)
+
+	var contraction_factor: float = _coiling_contraction_factor(abs(turn_input))
+	if contraction_factor > 0.0:
+		body_length = max(body_length - coiling_shrink_per_second * contraction_factor * delta, min_body_length)
 
 	_append_trail_point(global_position)
 	_trim_trail_to_length(body_length)
 	_sync_body_line()
+	if boost_length_loss > 0.0:
+		mass_shed.emit(_tail_world_position(), boost_length_loss)
 
 func set_movement_config(config: Resource) -> void:
 	movement_config = config
@@ -113,6 +127,9 @@ func grow_by(length_delta: float) -> void:
 
 func get_body_length() -> float:
 	return body_length
+
+func get_head_radius() -> float:
+	return head_radius
 
 func get_body_points() -> PackedVector2Array:
 	var points: PackedVector2Array = PackedVector2Array()
@@ -159,7 +176,18 @@ func _can_boost(wants_boost: bool) -> bool:
 		return false
 	if boost_body_drain_per_second <= 0.0:
 		return false
-	return body_length > min_body_length_for_boost
+	return body_length > max(min_body_length_for_boost, min_body_length)
+
+func _coiling_contraction_factor(turn_amount: float) -> float:
+	var threshold: float = clamp(coiling_turn_threshold, 0.0, 0.99)
+	if turn_amount <= threshold:
+		return 0.0
+	return clamp((turn_amount - threshold) / (1.0 - threshold), 0.0, 1.0)
+
+func _tail_world_position() -> Vector2:
+	if _trail_points.is_empty():
+		return global_position
+	return _trail_points[0]
 
 func _append_trail_point(world_point: Vector2) -> void:
 	if _trail_points.is_empty():

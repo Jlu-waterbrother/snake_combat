@@ -37,6 +37,7 @@ var _next_enemy_index: int = 1
 var _food_manager: Node2D
 var _aggression_scale: float = 1.0
 var _boost_scale: float = 1.0
+var _shed_length_remainder: Dictionary[StringName, float] = {}
 
 func _ready() -> void:
 	_rng.randomize()
@@ -131,6 +132,7 @@ func kill_snake(snake_id: StringName, reason: StringName) -> void:
 		_snake_nodes.erase(snake_id)
 
 	_scores.erase(snake_id)
+	_shed_length_remainder.erase(snake_id)
 	if snake_id == _player_snake_id:
 		_player_snake_id = &""
 	if was_enemy:
@@ -221,11 +223,14 @@ func _spawn_snake(snake_id: StringName, snake_scene: PackedScene, spawn_position
 		snake_node.call("set_head_color", Color(0.97, 0.27, 0.31))
 	if snake_node.has_signal("snake_died"):
 		snake_node.snake_died.connect(_on_snake_node_died.bind(snake_id))
+	if snake_node.has_signal("mass_shed"):
+		snake_node.mass_shed.connect(_on_snake_mass_shed.bind(snake_id))
 
 	add_child(snake_node)
 	snake_node.global_position = spawn_position
 	_snake_nodes[snake_id] = snake_node
 	_scores[snake_id] = 0
+	_shed_length_remainder[snake_id] = 0.0
 	return true
 
 func _sample_enemy_spawn_position() -> Vector2:
@@ -336,7 +341,8 @@ func _check_world_bounds() -> void:
 	var snakes_to_kill: Array[StringName] = []
 	for snake_id: StringName in _snake_nodes.keys():
 		var snake_node: Node2D = _snake_nodes[snake_id]
-		if snake_node.global_position.length() > world_radius:
+		var head_radius: float = _snake_head_radius(snake_id)
+		if snake_node.global_position.length() + head_radius >= world_radius:
 			snakes_to_kill.append(snake_id)
 
 	for snake_id: StringName in snakes_to_kill:
@@ -414,6 +420,15 @@ func _snake_length(snake_id: StringName) -> float:
 			return float(value)
 	return 0.0
 
+func _snake_head_radius(snake_id: StringName) -> float:
+	if not _snake_nodes.has(snake_id):
+		return 0.0
+	if _snake_nodes[snake_id].has_method("get_head_radius"):
+		var value: Variant = _snake_nodes[snake_id].call("get_head_radius")
+		if value is float or value is int:
+			return max(float(value), 0.0)
+	return 0.0
+
 func _emit_mass_drop(drop_points: PackedVector2Array, fallback_position: Vector2, total_amount: int) -> void:
 	if total_amount <= 0:
 		return
@@ -438,6 +453,20 @@ func _emit_mass_drop(drop_points: PackedVector2Array, fallback_position: Vector2
 		var amount: int = base_amount + (1 if i < remainder else 0)
 		if amount > 0:
 			snake_mass_dropped.emit(drop_points[point_index], amount)
+
+func _on_snake_mass_shed(world_position: Vector2, consumed_length: float, snake_id: StringName) -> void:
+	if consumed_length <= 0.0:
+		return
+	if not _scores.has(snake_id):
+		return
+
+	var growth_unit: float = max(growth_per_food, 1.0)
+	var accumulated_length: float = _shed_length_remainder.get(snake_id, 0.0) + consumed_length
+	var drop_amount: int = int(floor(accumulated_length / growth_unit))
+	_shed_length_remainder[snake_id] = accumulated_length - float(drop_amount) * growth_unit
+
+	for _i: int in range(drop_amount):
+		snake_mass_dropped.emit(world_position, 1)
 
 func _random_direction() -> Vector2:
 	var angle: float = _rng.randf_range(0.0, TAU)
