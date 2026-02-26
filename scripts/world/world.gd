@@ -8,6 +8,7 @@ signal match_state_changed(state: StringName)
 signal enemy_state_changed(snake_id: StringName, state: StringName)
 signal lives_changed(remaining_lives: int)
 signal difficulty_changed(level: int, enemy_target: int)
+signal leaderboard_changed(entries: Array[Dictionary])
 
 @export var movement_config: Resource
 @export var food_config: Resource
@@ -35,6 +36,7 @@ var _score_per_level: int = 20
 var _max_difficulty_level: int = 5
 var _base_camera_follow_lerp_speed: float = 8.0
 var _pre_pause_state: StringName = &"running"
+var _last_leaderboard_signature: String = ""
 
 func _ready() -> void:
 	snake_manager.snake_spawned.connect(_on_snake_spawned)
@@ -80,6 +82,7 @@ func _draw() -> void:
 
 func _physics_process(delta: float) -> void:
 	_update_dynamic_difficulty(delta)
+	_emit_leaderboard_if_changed()
 
 	if _camera_target_snake_id == &"":
 		return
@@ -91,6 +94,7 @@ func _physics_process(delta: float) -> void:
 	camera_rig.global_position = camera_rig.global_position.lerp(target_position, follow_weight)
 
 func start_match() -> void:
+	_last_leaderboard_signature = ""
 	_remaining_lives = max(player_lives, 1)
 	lives_changed.emit(_remaining_lives)
 
@@ -109,10 +113,12 @@ func start_match() -> void:
 	snake_manager.spawn_enemy_snakes(_base_enemy_count)
 	_camera_target_snake_id = player_snake_id
 	_set_match_state(&"running")
+	_emit_leaderboard_if_changed()
 
 func stop_match() -> void:
 	_camera_target_snake_id = &""
 	_set_match_state(&"stopped")
+	_emit_leaderboard_if_changed()
 
 func set_pause_state(paused: bool) -> void:
 	if paused:
@@ -151,6 +157,33 @@ func _update_dynamic_difficulty(delta: float) -> void:
 	snake_manager.set_ai_difficulty_scalars(1.0 + normalized_level * 0.6, 1.0 + normalized_level * 0.5)
 	camera_follow_lerp_speed = lerp(_base_camera_follow_lerp_speed, _base_camera_follow_lerp_speed + 3.0, normalized_level)
 	difficulty_changed.emit(_difficulty_level, target_enemy_count)
+
+func get_leaderboard_entries() -> Array[Dictionary]:
+	if snake_manager == null or not snake_manager.has_method("get_leaderboard_entries"):
+		return []
+
+	var entries_value: Variant = snake_manager.call("get_leaderboard_entries")
+	var entries: Array[Dictionary] = []
+	if entries_value is Array:
+		for entry_value: Variant in entries_value:
+			if entry_value is Dictionary:
+				entries.append(entry_value)
+	return entries
+
+func _emit_leaderboard_if_changed() -> void:
+	var entries: Array[Dictionary] = get_leaderboard_entries()
+	var signature_parts: PackedStringArray = PackedStringArray()
+	for entry: Dictionary in entries:
+		var snake_id: String = String(entry.get("snake_id", ""))
+		var length_value: float = float(entry.get("length", 0.0))
+		signature_parts.append("%s:%.2f" % [snake_id, length_value])
+
+	var signature: String = "|".join(signature_parts)
+	if signature == _last_leaderboard_signature:
+		return
+
+	_last_leaderboard_signature = signature
+	leaderboard_changed.emit(entries)
 
 func _on_food_eaten(snake_id: StringName, amount: int) -> void:
 	food_eaten.emit(snake_id, amount)

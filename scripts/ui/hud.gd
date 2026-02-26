@@ -6,6 +6,7 @@ extends CanvasLayer
 @onready var difficulty_value_label: Label = $Margin/Rows/DifficultyValue
 @onready var enemies_value_label: Label = $Margin/Rows/EnemiesValue
 @onready var message_value_label: Label = $Margin/Rows/MessageValue
+@onready var leaderboard_value_label: Label = $Margin/Rows/LeaderboardValue
 
 var _enemy_count: int = 0
 
@@ -16,6 +17,16 @@ func bind_world(world: Node) -> void:
 	world.difficulty_changed.connect(_on_difficulty_changed)
 	world.snake_spawned.connect(_on_snake_spawned)
 	world.snake_died.connect(_on_snake_died)
+	if world.has_signal("leaderboard_changed"):
+		world.leaderboard_changed.connect(_on_leaderboard_changed)
+	if world.has_method("get_leaderboard_entries"):
+		var entries_value: Variant = world.call("get_leaderboard_entries")
+		if entries_value is Array:
+			var entries: Array[Dictionary] = []
+			for entry_value: Variant in entries_value:
+				if entry_value is Dictionary:
+					entries.append(entry_value)
+			_on_leaderboard_changed(entries)
 
 func _on_match_state_changed(state: StringName) -> void:
 	state_value_label.text = String(state)
@@ -52,3 +63,20 @@ func _on_snake_died(snake_id: StringName, reason: StringName) -> void:
 		_enemy_count = max(_enemy_count - 1, 0)
 		enemies_value_label.text = str(_enemy_count)
 		message_value_label.text = "Enemy eliminated"
+
+func _on_leaderboard_changed(entries: Array[Dictionary]) -> void:
+	if entries.is_empty():
+		leaderboard_value_label.text = "-"
+		return
+
+	var lines: PackedStringArray = PackedStringArray()
+	var rank: int = 1
+	for entry: Dictionary in entries:
+		var display_name: String = String(entry.get("name", "Unknown"))
+		if bool(entry.get("is_player", false)):
+			display_name = "%s (You)" % display_name
+		var length_value: float = float(entry.get("length", 0.0))
+		lines.append("%d. %s  %.0f" % [rank, display_name, length_value])
+		rank += 1
+
+	leaderboard_value_label.text = "\n".join(lines)

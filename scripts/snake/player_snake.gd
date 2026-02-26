@@ -9,11 +9,16 @@ enum ControlMode {
 }
 
 @export var movement_config: Resource
+@export var skin: Resource
 @export var default_base_speed: float = 165.0
 @export var default_boost_speed: float = 255.0
 @export var boost_body_drain_per_second: float = 18.0
 @export var min_body_length_for_boost: float = 120.0
 @export var min_body_length: float = 80.0
+@export var visual_reference_length: float = 180.0
+@export var head_growth_scale: float = 0.35
+@export var body_width_growth_scale: float = 0.45
+@export var max_visual_scale: float = 2.4
 @export var coiling_turn_threshold: float = 0.55
 @export var coiling_shrink_per_second: float = 8.0
 @export var default_turn_rate_deg_per_second: float = 300.0
@@ -38,6 +43,12 @@ var _segment_spacing: float = 10.0
 var _is_dead: bool = false
 var _ai_turn_input: float = 0.0
 var _ai_boosting: bool = false
+var _base_head_radius: float = 10.0
+var _base_body_line_width: float = 12.0
+var _skin_head_color: Color = Color(0.22, 0.84, 0.31)
+var _skin_body_color: Color = Color(0.18, 0.67, 0.25)
+var _skin_head_radius_scale: float = 1.0
+var _skin_body_width_scale: float = 1.0
 
 func _ready() -> void:
 	_heading = initial_heading.normalized()
@@ -47,6 +58,12 @@ func _ready() -> void:
 	head_area.collision_layer = 4
 	head_area.collision_mask = 8
 	head_area.add_to_group("snake_head")
+	_base_head_radius = max(head_radius, 1.0)
+	_base_body_line_width = max(body_line.width, 1.0)
+	_skin_head_color = head_color
+	_skin_body_color = head_color.darkened(0.2)
+	_apply_skin()
+	_sync_visual_scale()
 	_sync_head_collision()
 	_sync_body_style()
 
@@ -88,6 +105,7 @@ func _physics_process(delta: float) -> void:
 	if contraction_factor > 0.0:
 		body_length = max(body_length - coiling_shrink_per_second * contraction_factor * delta, min_body_length)
 
+	_sync_visual_scale()
 	_append_trail_point(global_position)
 	_trim_trail_to_length(body_length)
 	_sync_body_line()
@@ -115,9 +133,15 @@ func set_snake_id(new_snake_id: StringName) -> void:
 
 func set_head_color(new_head_color: Color) -> void:
 	head_color = new_head_color
+	_skin_head_color = new_head_color
+	_skin_body_color = new_head_color.darkened(0.2)
 	if is_inside_tree():
 		_sync_body_style()
 		queue_redraw()
+
+func set_skin(new_skin: Resource) -> void:
+	skin = new_skin
+	_apply_skin()
 
 func grow_by(length_delta: float) -> void:
 	if length_delta <= 0.0:
@@ -188,6 +212,49 @@ func _tail_world_position() -> Vector2:
 	if _trail_points.is_empty():
 		return global_position
 	return _trail_points[0]
+
+func _apply_skin() -> void:
+	var next_head_color: Color = _skin_head_color
+	var next_body_color: Color = _skin_body_color
+	var next_head_scale: float = 1.0
+	var next_body_scale: float = 1.0
+
+	if skin != null:
+		next_head_color = _skin_color("head_color", _skin_head_color)
+		next_body_color = _skin_color("body_color", next_head_color.darkened(0.2))
+		next_head_scale = max(_skin_number("head_radius_scale", 1.0), 0.4)
+		next_body_scale = max(_skin_number("body_width_scale", 1.0), 0.4)
+
+	_skin_head_color = next_head_color
+	_skin_body_color = next_body_color
+	_skin_head_radius_scale = next_head_scale
+	_skin_body_width_scale = next_body_scale
+	head_color = _skin_head_color
+
+	if is_inside_tree():
+		_sync_visual_scale()
+		_sync_body_style()
+		queue_redraw()
+
+func _sync_visual_scale() -> void:
+	var reference_length: float = max(visual_reference_length, 1.0)
+	var length_ratio: float = max(body_length / reference_length, 0.01)
+	var growth_amount: float = max(length_ratio - 1.0, 0.0)
+	var visual_scale_limit: float = max(max_visual_scale, 1.0)
+
+	var head_scale: float = clamp(1.0 + growth_amount * max(head_growth_scale, 0.0), 1.0, visual_scale_limit)
+	var body_scale: float = clamp(1.0 + growth_amount * max(body_width_growth_scale, 0.0), 1.0, visual_scale_limit)
+
+	var target_head_radius: float = _base_head_radius * _skin_head_radius_scale * head_scale
+	var target_body_width: float = _base_body_line_width * _skin_body_width_scale * body_scale
+	var head_changed: bool = not is_equal_approx(head_radius, target_head_radius)
+
+	head_radius = target_head_radius
+	if body_line != null:
+		body_line.width = target_body_width
+	if head_changed:
+		_sync_head_collision()
+		queue_redraw()
 
 func _append_trail_point(world_point: Vector2) -> void:
 	if _trail_points.is_empty():
@@ -267,7 +334,7 @@ func _sync_head_collision() -> void:
 func _sync_body_style() -> void:
 	if body_line == null:
 		return
-	body_line.default_color = head_color.darkened(0.2)
+	body_line.default_color = _skin_body_color
 
 func _config_number(property_name: String, fallback: float) -> float:
 	if movement_config == null:
@@ -276,4 +343,22 @@ func _config_number(property_name: String, fallback: float) -> float:
 	var value: Variant = movement_config.get(property_name)
 	if value is float or value is int:
 		return float(value)
+	return fallback
+
+func _skin_number(property_name: String, fallback: float) -> float:
+	if skin == null:
+		return fallback
+
+	var value: Variant = skin.get(property_name)
+	if value is float or value is int:
+		return float(value)
+	return fallback
+
+func _skin_color(property_name: String, fallback: Color) -> Color:
+	if skin == null:
+		return fallback
+
+	var value: Variant = skin.get(property_name)
+	if value is Color:
+		return value
 	return fallback

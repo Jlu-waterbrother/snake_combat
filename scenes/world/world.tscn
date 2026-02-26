@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/world.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/managers/snake_manager.gd" id="2"]
@@ -8,6 +8,8 @@
 [ext_resource type="Resource" path="res://resources/config/default_ai_config.tres" id="6"]
 [ext_resource type="PackedScene" path="res://scenes/snake/player_snake.tscn" id="7"]
 [ext_resource type="PackedScene" path="res://scenes/food/food_item.tscn" id="8"]
+[ext_resource type="Resource" path="res://resources/config/default_player_skin.tres" id="9"]
+[ext_resource type="Resource" path="res://resources/config/default_enemy_skin.tres" id="10"]
 
 [node name="World" type="Node2D"]
 script = ExtResource("1")
@@ -21,6 +23,8 @@ player_snake_scene = ExtResource("7")
 enemy_snake_scene = ExtResource("7")
 movement_config = ExtResource("4")
 ai_config = ExtResource("6")
+player_skin = ExtResource("9")
+enemy_skin = ExtResource("10")
 world_radius = 2200.0
 
 [node name="FoodManager" type="Node2D" parent="."]

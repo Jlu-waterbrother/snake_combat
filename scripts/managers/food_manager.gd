@@ -10,6 +10,8 @@ signal food_eaten(snake_id: StringName, amount: int)
 @export var safe_spawn_radius: float = 180.0
 @export var respawn_on_consume: bool = true
 @export var spawn_attempts: int = 8
+@export var max_active_food_count: int = 420
+@export var max_food_samples_per_query: int = 320
 
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _next_food_id: int = 1
@@ -22,8 +24,12 @@ func bootstrap_food() -> void:
 		return
 
 	_rng.randomize()
-	_ensure_pool_capacity(initial_food_count)
-	for _i: int in range(initial_food_count):
+	var bootstrap_count: int = max(initial_food_count, 0)
+	if max_active_food_count > 0:
+		bootstrap_count = min(bootstrap_count, max_active_food_count)
+
+	_ensure_pool_capacity(bootstrap_count)
+	for _i: int in range(bootstrap_count):
 		_spawn_food_at_position(_sample_spawn_point(), 1)
 
 func spawn_food_burst(center_position: Vector2, amount: int) -> void:
@@ -55,13 +61,18 @@ func get_nearest_food_positions(origins: Dictionary, max_distance: float) -> Dic
 		nearest_map[origin_key] = Vector2.INF
 		best_distance_squared[origin_key] = max_distance_squared
 
-	var active_positions: PackedVector2Array = PackedVector2Array()
-	for food_node: Area2D in _active_food:
+	if _active_food.is_empty():
+		return nearest_map
+
+	var sample_budget: int = max(max_food_samples_per_query, 1)
+	var total_active: int = _active_food.size()
+	var sample_step: int = max(int(ceil(float(total_active) / float(sample_budget))), 1)
+	for index: int in range(0, total_active, sample_step):
+		var food_node: Area2D = _active_food[index]
 		if not is_instance_valid(food_node) or not food_node.visible:
 			continue
-		active_positions.append(food_node.global_position)
 
-	for food_position: Vector2 in active_positions:
+		var food_position: Vector2 = food_node.global_position
 		for origin_key: Variant in origins.keys():
 			var origin_value: Variant = origins.get(origin_key, Vector2.ZERO)
 			if origin_value is not Vector2:
@@ -80,7 +91,11 @@ func get_active_food_count() -> int:
 	return _active_food.size()
 
 func _ensure_pool_capacity(target_count: int) -> void:
-	while _active_food.size() + _inactive_food.size() < target_count:
+	var clamped_target: int = max(target_count, 0)
+	if max_active_food_count > 0:
+		clamped_target = min(clamped_target, max_active_food_count)
+
+	while _active_food.size() + _inactive_food.size() < clamped_target:
 		var food_node := food_scene.instantiate() as Area2D
 		if food_node == null:
 			push_error("food_scene must instantiate to Area2D.")
@@ -98,13 +113,28 @@ func _ensure_pool_capacity(target_count: int) -> void:
 		_inactive_food.append(food_node)
 
 func _spawn_food_at_position(point: Vector2, food_amount: int) -> void:
+	if max_active_food_count > 0 and _active_food.size() >= max_active_food_count:
+		if _active_food.is_empty():
+			return
+
+		var recycled_food: Area2D = _active_food.pop_back()
+		if not is_instance_valid(recycled_food):
+			return
+
+		var recycled_food_id: int = _next_food_id
+		_next_food_id += 1
+		_activate_food_node(recycled_food, recycled_food_id, point, food_amount)
+		return
+
 	var food_node: Area2D = _acquire_food_node()
 	if food_node == null:
 		return
 
 	var food_id: int = _next_food_id
 	_next_food_id += 1
+	_activate_food_node(food_node, food_id, point, food_amount)
 
+func _activate_food_node(food_node: Area2D, food_id: int, point: Vector2, food_amount: int) -> void:
 	if food_node.has_method("configure"):
 		food_node.call("configure", food_id, point, food_amount)
 	else:

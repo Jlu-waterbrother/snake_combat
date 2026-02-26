@@ -11,6 +11,8 @@ signal enemy_state_changed(snake_id: StringName, state: StringName)
 @export var enemy_snake_scene: PackedScene
 @export var movement_config: Resource
 @export var ai_config: Resource
+@export var player_skin: Resource
+@export var enemy_skin: Resource
 @export var growth_per_food: float = 8.0
 @export var enemy_spawn_radius_min: float = 420.0
 @export var enemy_spawn_radius_max: float = 980.0
@@ -27,6 +29,26 @@ const STATE_PATROL: StringName = &"patrol"
 const STATE_SEEK: StringName = &"seek"
 const STATE_CHASE: StringName = &"chase"
 const STATE_AVOID: StringName = &"avoid"
+const ENEMY_NAME_POOL := [
+	"Viper",
+	"Cobra",
+	"Mamba",
+	"Krait",
+	"Asp",
+	"Adder",
+	"Fang",
+	"Razor",
+	"Ember",
+	"Riptide",
+	"Nova",
+	"Storm",
+	"Blaze",
+	"Echo",
+	"Comet",
+	"Zephyr",
+	"Spike",
+	"Shadow",
+]
 
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _scores: Dictionary[StringName, int] = {}
@@ -43,6 +65,7 @@ var _aggression_scale: float = 1.0
 var _boost_scale: float = 1.0
 var _shed_length_remainder: Dictionary[StringName, float] = {}
 var _invincibility_remaining: Dictionary[StringName, float] = {}
+var _snake_display_names: Dictionary[StringName, String] = {}
 
 func _ready() -> void:
 	_rng.randomize()
@@ -142,6 +165,7 @@ func kill_snake(snake_id: StringName, reason: StringName) -> void:
 	_scores.erase(snake_id)
 	_shed_length_remainder.erase(snake_id)
 	_invincibility_remaining.erase(snake_id)
+	_snake_display_names.erase(snake_id)
 	if snake_id == _player_snake_id:
 		_player_snake_id = &""
 	if was_enemy:
@@ -186,6 +210,19 @@ func get_player_body_length() -> float:
 		if value is float or value is int:
 			return float(value)
 	return 0.0
+
+func get_leaderboard_entries() -> Array[Dictionary]:
+	var entries: Array[Dictionary] = []
+	for snake_id: StringName in _snake_nodes.keys():
+		entries.append({
+			"snake_id": snake_id,
+			"name": _snake_display_names.get(snake_id, String(snake_id)),
+			"length": _snake_length(snake_id),
+			"is_player": snake_id == _player_snake_id,
+		})
+
+	entries.sort_custom(_sort_leaderboard_entries)
+	return entries
 
 func set_temporary_invincibility(snake_id: StringName, duration_seconds: float) -> void:
 	if not _snake_nodes.has(snake_id):
@@ -236,13 +273,19 @@ func _spawn_snake(snake_id: StringName, snake_scene: PackedScene, spawn_position
 		push_error("Snake scene must instantiate to Node2D.")
 		return false
 
+	var applied_skin: bool = false
+	if snake_node.has_method("set_skin"):
+		var selected_skin: Resource = enemy_skin if is_enemy else player_skin
+		if selected_skin != null:
+			snake_node.call("set_skin", selected_skin)
+			applied_skin = true
 	if snake_node.has_method("set_movement_config"):
 		snake_node.call("set_movement_config", movement_config)
 	if snake_node.has_method("set_snake_id"):
 		snake_node.call("set_snake_id", snake_id)
 	if snake_node.has_method("set_control_mode"):
 		snake_node.call("set_control_mode", 1 if is_enemy else 0)
-	if snake_node.has_method("set_head_color") and is_enemy:
+	if snake_node.has_method("set_head_color") and is_enemy and not applied_skin:
 		snake_node.call("set_head_color", Color(0.97, 0.27, 0.31))
 	if snake_node.has_signal("snake_died"):
 		snake_node.snake_died.connect(_on_snake_node_died.bind(snake_id))
@@ -254,6 +297,7 @@ func _spawn_snake(snake_id: StringName, snake_scene: PackedScene, spawn_position
 	_snake_nodes[snake_id] = snake_node
 	_scores[snake_id] = 0
 	_shed_length_remainder[snake_id] = 0.0
+	_snake_display_names[snake_id] = _generate_enemy_name() if is_enemy else "Player"
 	return true
 
 func _sample_enemy_spawn_position() -> Vector2:
@@ -492,6 +536,29 @@ func _snake_head_radius(snake_id: StringName) -> float:
 			return max(float(value), 0.0)
 	return 0.0
 
+func _sort_leaderboard_entries(a: Dictionary, b: Dictionary) -> bool:
+	var length_a: float = float(a.get("length", 0.0))
+	var length_b: float = float(b.get("length", 0.0))
+	if is_equal_approx(length_a, length_b):
+		var name_a: String = String(a.get("name", ""))
+		var name_b: String = String(b.get("name", ""))
+		return name_a < name_b
+	return length_a > length_b
+
+func _generate_enemy_name() -> String:
+	if ENEMY_NAME_POOL.is_empty():
+		return "Enemy-%03d" % _rng.randi_range(0, 999)
+
+	var attempts: int = max(ENEMY_NAME_POOL.size() * 2, 8)
+	for _attempt: int in range(attempts):
+		var pool_index: int = _rng.randi_range(0, ENEMY_NAME_POOL.size() - 1)
+		var base_name: String = ENEMY_NAME_POOL[pool_index]
+		var candidate: String = "%s-%02d" % [base_name, _rng.randi_range(0, 99)]
+		if not _snake_display_names.values().has(candidate):
+			return candidate
+
+	return "%s-%03d" % [ENEMY_NAME_POOL[0], _rng.randi_range(100, 999)]
+
 func _update_invincibility(delta: float) -> void:
 	if _invincibility_remaining.is_empty():
 		return
@@ -551,8 +618,8 @@ func _on_snake_mass_shed(world_position: Vector2, consumed_length: float, snake_
 	var drop_amount: int = int(floor(accumulated_length / growth_unit))
 	_shed_length_remainder[snake_id] = accumulated_length - float(drop_amount) * growth_unit
 
-	for _i: int in range(drop_amount):
-		snake_mass_dropped.emit(world_position, 1)
+	if drop_amount > 0:
+		snake_mass_dropped.emit(world_position, drop_amount)
 
 func _random_direction() -> Vector2:
 	var angle: float = _rng.randf_range(0.0, TAU)
