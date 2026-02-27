@@ -17,7 +17,7 @@ enum ControlMode {
 @export var min_body_length: float = 80.0
 @export var visual_reference_length: float = 180.0
 @export var head_growth_scale: float = 0.35
-@export var body_width_growth_scale: float = 0.45
+@export var body_width_growth_scale: float = 0.3
 @export var max_visual_scale: float = 2.4
 @export var coiling_turn_threshold: float = 0.55
 @export var coiling_shrink_per_second: float = 8.0

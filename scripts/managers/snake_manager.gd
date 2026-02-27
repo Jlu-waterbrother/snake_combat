@@ -13,7 +13,7 @@ signal enemy_state_changed(snake_id: StringName, state: StringName)
 @export var ai_config: Resource
 @export var player_skin: Resource
 @export var enemy_skin: Resource
-@export var growth_per_food: float = 8.0
+@export var growth_per_food: float = 10.0
 @export var enemy_spawn_radius_min: float = 420.0
 @export var enemy_spawn_radius_max: float = 980.0
 @export var enemy_spawn_attempts: int = 24
