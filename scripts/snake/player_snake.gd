@@ -49,6 +49,9 @@ var _skin_head_color: Color = Color(0.22, 0.84, 0.31)
 var _skin_body_color: Color = Color(0.18, 0.67, 0.25)
 var _skin_head_radius_scale: float = 1.0
 var _skin_body_width_scale: float = 1.0
+var _skin_head_texture: Texture2D
+var _skin_body_texture: Texture2D
+var _head_sprite: Sprite2D
 
 func _ready() -> void:
 	_heading = initial_heading.normalized()
@@ -62,6 +65,11 @@ func _ready() -> void:
 	_base_body_line_width = max(body_line.width, 1.0)
 	_skin_head_color = head_color
 	_skin_body_color = head_color.darkened(0.2)
+	_head_sprite = Sprite2D.new()
+	_head_sprite.centered = true
+	_head_sprite.z_index = 2
+	_head_sprite.visible = false
+	add_child(_head_sprite)
 	_apply_skin()
 	_sync_visual_scale()
 	_sync_head_collision()
@@ -72,7 +80,8 @@ func _ready() -> void:
 	queue_redraw()
 
 func _draw() -> void:
-	draw_circle(Vector2.ZERO, head_radius, head_color)
+	if _skin_head_texture == null:
+		draw_circle(Vector2.ZERO, head_radius, head_color)
 
 func _physics_process(delta: float) -> void:
 	if _is_dead:
@@ -218,17 +227,23 @@ func _apply_skin() -> void:
 	var next_body_color: Color = _skin_body_color
 	var next_head_scale: float = 1.0
 	var next_body_scale: float = 1.0
+	var next_head_texture: Texture2D = null
+	var next_body_texture: Texture2D = null
 
 	if skin != null:
 		next_head_color = _skin_color("head_color", _skin_head_color)
 		next_body_color = _skin_color("body_color", next_head_color.darkened(0.2))
 		next_head_scale = max(_skin_number("head_radius_scale", 1.0), 0.4)
 		next_body_scale = max(_skin_number("body_width_scale", 1.0), 0.4)
+		next_head_texture = _skin_texture("head_texture")
+		next_body_texture = _skin_texture("body_texture")
 
 	_skin_head_color = next_head_color
 	_skin_body_color = next_body_color
 	_skin_head_radius_scale = next_head_scale
 	_skin_body_width_scale = next_body_scale
+	_skin_head_texture = next_head_texture
+	_skin_body_texture = next_body_texture
 	head_color = _skin_head_color
 
 	if is_inside_tree():
@@ -252,6 +267,7 @@ func _sync_visual_scale() -> void:
 	head_radius = target_head_radius
 	if body_line != null:
 		body_line.width = target_body_width
+	_sync_head_visual()
 	if head_changed:
 		_sync_head_collision()
 		queue_redraw()
@@ -334,7 +350,32 @@ func _sync_head_collision() -> void:
 func _sync_body_style() -> void:
 	if body_line == null:
 		return
-	body_line.default_color = _skin_body_color
+	if _skin_body_texture != null:
+		body_line.texture = _skin_body_texture
+		body_line.texture_mode = Line2D.LINE_TEXTURE_TILE
+		body_line.default_color = Color.WHITE
+	else:
+		body_line.texture = null
+		body_line.texture_mode = Line2D.LINE_TEXTURE_NONE
+		body_line.default_color = _skin_body_color
+
+func _sync_head_visual() -> void:
+	if _head_sprite == null:
+		return
+	if _skin_head_texture == null:
+		_head_sprite.texture = null
+		_head_sprite.visible = false
+		return
+
+	_head_sprite.texture = _skin_head_texture
+	var texture_size: Vector2 = _skin_head_texture.get_size()
+	var max_dimension: float = max(texture_size.x, texture_size.y)
+	var target_diameter: float = max(head_radius * 2.0, 1.0)
+	var scale_factor: float = 1.0
+	if max_dimension > 0.0:
+		scale_factor = target_diameter / max_dimension
+	_head_sprite.scale = Vector2.ONE * scale_factor
+	_head_sprite.visible = true
 
 func _config_number(property_name: String, fallback: float) -> float:
 	if movement_config == null:
@@ -362,3 +403,12 @@ func _skin_color(property_name: String, fallback: Color) -> Color:
 	if value is Color:
 		return value
 	return fallback
+
+func _skin_texture(property_name: String) -> Texture2D:
+	if skin == null:
+		return null
+
+	var value: Variant = skin.get(property_name)
+	if value is Texture2D:
+		return value
+	return null

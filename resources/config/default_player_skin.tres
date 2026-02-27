@@ -1,6 +1,8 @@
-[gd_resource type="Resource" script_class="SnakeSkin" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="SnakeSkin" load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/config/snake_skin.gd" id="1"]
+[ext_resource type="Texture2D" path="res://resources/textures/skins/player_head_texture.tres" id="2"]
+[ext_resource type="Texture2D" path="res://resources/textures/skins/player_body_texture.tres" id="3"]
 
 [resource]
 script = ExtResource("1")
@@ -8,3 +10,5 @@ head_color = Color(0.29, 0.8, 1, 1)
 body_color = Color(0.17, 0.35, 0.86, 1)
 head_radius_scale = 1.05
 body_width_scale = 0.92
+head_texture = ExtResource("2")
+body_texture = ExtResource("3")
