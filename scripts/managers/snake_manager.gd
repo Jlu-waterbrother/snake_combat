@@ -57,6 +57,8 @@ var _enemy_ids: Array[StringName] = []
 var _enemy_states: Dictionary[StringName, StringName] = {}
 var _enemy_targets: Dictionary[StringName, Vector2] = {}
 var _enemy_retarget_cooldown: Dictionary[StringName, float] = {}
+var _enemy_hazard_probe_cooldown: Dictionary[StringName, float] = {}
+var _enemy_hazard_turn_cache: Dictionary[StringName, float] = {}
 var _player_snake_id: StringName = &""
 var _target_enemy_count: int = 0
 var _next_enemy_index: int = 1
@@ -173,6 +175,8 @@ func kill_snake(snake_id: StringName, reason: StringName) -> void:
 		_enemy_states.erase(snake_id)
 		_enemy_targets.erase(snake_id)
 		_enemy_retarget_cooldown.erase(snake_id)
+		_enemy_hazard_probe_cooldown.erase(snake_id)
+		_enemy_hazard_turn_cache.erase(snake_id)
 
 	if allow_mass_drop and drop_amount > 0:
 		_emit_mass_drop(drop_points, drop_position, drop_amount)
@@ -263,6 +267,8 @@ func _spawn_next_enemy() -> void:
 	_enemy_states[enemy_id] = STATE_PATROL
 	_enemy_targets[enemy_id] = _snake_nodes[enemy_id].global_position + Vector2.RIGHT * 120.0
 	_enemy_retarget_cooldown[enemy_id] = 0.0
+	_enemy_hazard_probe_cooldown[enemy_id] = 0.0
+	_enemy_hazard_turn_cache[enemy_id] = 0.0
 	snake_spawned.emit(enemy_id)
 	score_changed.emit(enemy_id, 0)
 	enemy_state_changed.emit(enemy_id, STATE_PATROL)
@@ -353,8 +359,10 @@ func _update_enemy_ai(delta: float) -> void:
 
 	var has_player: bool = _player_snake_id != &"" and _snake_nodes.has(_player_snake_id)
 	var player_position: Vector2 = Vector2.ZERO
+	var player_heading: Vector2 = Vector2.RIGHT
 	if has_player:
 		player_position = _snake_nodes[_player_snake_id].global_position
+		player_heading = _player_heading()
 
 	var retarget_origins: Dictionary = {}
 	var retarget_interval: float = max(_ai_float("retarget_interval", 0.2), 0.05)
@@ -387,13 +395,13 @@ func _update_enemy_ai(delta: float) -> void:
 			var nearest_food: Vector2 = Vector2.INF
 			if nearest_food_value is Vector2:
 				nearest_food = nearest_food_value
-			_retarget_enemy(enemy_id, enemy_position, has_player, player_position, nearest_food, vision_radius)
+			_retarget_enemy(enemy_id, enemy_position, has_player, player_position, player_heading, nearest_food, vision_radius)
 
 		var enemy_node: Node2D = _snake_nodes[enemy_id]
 		var target_position: Vector2 = _enemy_targets.get(enemy_id, enemy_node.global_position + Vector2.RIGHT * 120.0)
-		_apply_enemy_steering(enemy_id, enemy_node, target_position)
+		_apply_enemy_steering(enemy_id, enemy_node, target_position, delta)
 
-func _retarget_enemy(enemy_id: StringName, enemy_position: Vector2, has_player: bool, player_position: Vector2, nearest_food: Vector2, vision_radius: float) -> void:
+func _retarget_enemy(enemy_id: StringName, enemy_position: Vector2, has_player: bool, player_position: Vector2, player_heading: Vector2, nearest_food: Vector2, vision_radius: float) -> void:
 	var state: StringName = STATE_PATROL
 	var target: Vector2 = enemy_position + _random_direction() * 240.0
 	var avoid_ratio: float = clamp(_ai_float("avoid_boundary_ratio", 0.8), 0.5, 0.95)
@@ -424,7 +432,15 @@ func _retarget_enemy(enemy_id: StringName, enemy_position: Vector2, has_player: 
 		if state != STATE_AVOID and should_chase and has_player:
 			state = STATE_CHASE
 			var predict_seconds: float = clamp(_ai_float("chase_predict_seconds", 0.35), 0.0, 1.2)
-			var predicted_position: Vector2 = player_position + _player_heading() * _movement_float("base_speed", 123.75) * predict_seconds
+			var predicted_position: Vector2 = player_position + player_heading * _movement_float("base_speed", 123.75) * predict_seconds
+			var flank_distance: float = max(_ai_float("chase_flank_distance", 90.0), 0.0)
+			if flank_distance > 0.0:
+				var lateral: Vector2 = Vector2(-player_heading.y, player_heading.x)
+				var side_sign: float = -1.0 if abs(String(enemy_id).hash()) % 2 == 0 else 1.0
+				predicted_position += lateral * flank_distance * side_sign
+			var safe_target_radius: float = max(world_radius - avoid_margin - 24.0, 140.0)
+			if predicted_position.length() > safe_target_radius:
+				predicted_position = predicted_position.normalized() * safe_target_radius
 			target = predicted_position
 		elif state != STATE_AVOID and nearest_food.is_finite():
 			state = STATE_SEEK
@@ -436,7 +452,7 @@ func _retarget_enemy(enemy_id: StringName, enemy_position: Vector2, has_player: 
 		_enemy_states[enemy_id] = state
 		enemy_state_changed.emit(enemy_id, state)
 
-func _apply_enemy_steering(enemy_id: StringName, enemy_node: Node2D, target_position: Vector2) -> void:
+func _apply_enemy_steering(enemy_id: StringName, enemy_node: Node2D, target_position: Vector2, delta: float) -> void:
 	if not enemy_node.has_method("set_ai_command"):
 		return
 
@@ -452,7 +468,7 @@ func _apply_enemy_steering(enemy_id: StringName, enemy_node: Node2D, target_posi
 
 	var turn_scale: float = max(_ai_float("turn_responsiveness", 4.2), 0.5)
 	var turn_input: float = clamp(heading.cross(desired_direction) * turn_scale, -1.0, 1.0)
-	var hazard_avoid_turn: float = _compute_hazard_avoid_turn(enemy_id, enemy_node)
+	var hazard_avoid_turn: float = _cached_hazard_avoid_turn(enemy_id, enemy_node, delta)
 	if abs(hazard_avoid_turn) > 0.001:
 		turn_input = hazard_avoid_turn
 
@@ -575,6 +591,19 @@ func _player_heading() -> Vector2:
 		if heading_value is Vector2 and (heading_value as Vector2) != Vector2.ZERO:
 			return (heading_value as Vector2).normalized()
 	return Vector2.RIGHT
+
+func _cached_hazard_avoid_turn(enemy_id: StringName, enemy_node: Node2D, delta: float) -> float:
+	var cached_turn: float = float(_enemy_hazard_turn_cache.get(enemy_id, 0.0))
+	var cooldown: float = float(_enemy_hazard_probe_cooldown.get(enemy_id, 0.0)) - delta
+	if cooldown > 0.0:
+		_enemy_hazard_probe_cooldown[enemy_id] = cooldown
+		return cached_turn
+
+	var hazard_turn: float = _compute_hazard_avoid_turn(enemy_id, enemy_node)
+	_enemy_hazard_turn_cache[enemy_id] = hazard_turn
+	var probe_interval: float = clamp(_ai_float("hazard_probe_interval", 0.08), 0.016, 0.25)
+	_enemy_hazard_probe_cooldown[enemy_id] = probe_interval
+	return hazard_turn
 
 func _compute_hazard_avoid_turn(enemy_id: StringName, enemy_node: Node2D) -> float:
 	var heading: Vector2 = Vector2.RIGHT
@@ -720,7 +749,7 @@ func _on_snake_mass_shed(world_position: Vector2, consumed_length: float, snake_
 	_shed_length_remainder[snake_id] = accumulated_length - float(drop_amount) * growth_unit
 
 	if drop_amount > 0:
-		snake_mass_dropped.emit(world_position, drop_amount, false)
+		snake_mass_dropped.emit(world_position, drop_amount, true)
 
 func _random_direction() -> Vector2:
 	var angle: float = _rng.randf_range(0.0, TAU)

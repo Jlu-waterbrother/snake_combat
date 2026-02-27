@@ -39,6 +39,7 @@ func spawn_food_burst(center_position: Vector2, amount: int, ignore_food_cap: bo
 		push_warning("Food burst amount must be positive.")
 		return
 
+	_ensure_pool_capacity(_active_food.size() + amount, ignore_food_cap)
 	var burst_radius: float = min(spawn_radius * 0.05, 120.0)
 	for _i: int in range(amount):
 		var offset: Vector2 = Vector2.ZERO if amount == 1 else _random_point_in_radius(burst_radius)
@@ -102,9 +103,9 @@ func get_nearest_food_positions(origins: Dictionary, max_distance: float) -> Dic
 func get_active_food_count() -> int:
 	return _active_food.size()
 
-func _ensure_pool_capacity(target_count: int) -> void:
+func _ensure_pool_capacity(target_count: int, ignore_food_cap: bool = false) -> void:
 	var clamped_target: int = max(target_count, 0)
-	if max_active_food_count > 0:
+	if not ignore_food_cap and max_active_food_count > 0:
 		clamped_target = min(clamped_target, max_active_food_count)
 
 	while _active_food.size() + _inactive_food.size() < clamped_target:
@@ -150,12 +151,7 @@ func _activate_food_node(food_node: Area2D, food_id: int, point: Vector2, food_a
 
 func _acquire_food_node(ignore_food_cap: bool = false) -> Area2D:
 	if _inactive_food.is_empty():
-		if ignore_food_cap:
-			var created_node: Area2D = _create_food_node()
-			if created_node != null:
-				_inactive_food.append(created_node)
-		else:
-			_ensure_pool_capacity(_active_food.size() + 1)
+		_ensure_pool_capacity(_active_food.size() + 1, ignore_food_cap)
 		if _inactive_food.is_empty():
 			push_error("Unable to allocate food pool node.")
 			return null
