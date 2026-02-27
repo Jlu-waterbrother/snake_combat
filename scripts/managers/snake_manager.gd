@@ -3,7 +3,7 @@ class_name SnakeManager
 
 signal snake_spawned(snake_id: StringName)
 signal snake_died(snake_id: StringName, reason: StringName)
-signal snake_mass_dropped(world_position: Vector2, amount: int)
+signal snake_mass_dropped(world_position: Vector2, amount: int, bypass_food_cap: bool)
 signal score_changed(snake_id: StringName, score: int)
 signal enemy_state_changed(snake_id: StringName, state: StringName)
 
@@ -397,19 +397,36 @@ func _retarget_enemy(enemy_id: StringName, enemy_position: Vector2, has_player: 
 	var state: StringName = STATE_PATROL
 	var target: Vector2 = enemy_position + _random_direction() * 240.0
 	var avoid_ratio: float = clamp(_ai_float("avoid_boundary_ratio", 0.8), 0.5, 0.95)
-	if enemy_position.length() >= world_radius * avoid_ratio:
+	var avoid_margin: float = max(_ai_float("avoid_boundary_margin", 220.0), 40.0)
+	if enemy_position.length() >= world_radius * avoid_ratio or enemy_position.length() >= world_radius - avoid_margin:
 		state = STATE_AVOID
 		target = Vector2.ZERO
 	else:
 		var aggression: float = clamp(_ai_float("aggression", 0.45) * _aggression_scale, 0.0, 1.0)
 		var should_chase: bool = false
-		if has_player and enemy_position.distance_to(player_position) <= vision_radius:
-			should_chase = _rng.randf() <= aggression
+		if has_player:
+			var player_distance: float = enemy_position.distance_to(player_position)
+			if player_distance <= vision_radius:
+				var enemy_length: float = _snake_length(enemy_id)
+				var player_length: float = _snake_length(_player_snake_id)
+				var caution_ratio: float = max(_ai_float("caution_length_ratio", 1.05), 0.3)
+				var avoid_distance: float = max(_ai_float("head_on_avoid_distance", 200.0), 40.0)
+				var is_outmatched: bool = enemy_length < player_length * caution_ratio
+				if is_outmatched and player_distance <= avoid_distance:
+					state = STATE_AVOID
+					var away_direction: Vector2 = (enemy_position - player_position).normalized()
+					if away_direction == Vector2.ZERO:
+						away_direction = _random_direction()
+					target = enemy_position + away_direction * min(vision_radius, 280.0)
+				else:
+					should_chase = _rng.randf() <= aggression
 
-		if should_chase:
+		if state != STATE_AVOID and should_chase and has_player:
 			state = STATE_CHASE
-			target = player_position
-		elif nearest_food.is_finite():
+			var predict_seconds: float = clamp(_ai_float("chase_predict_seconds", 0.35), 0.0, 1.2)
+			var predicted_position: Vector2 = player_position + _player_heading() * _movement_float("base_speed", 123.75) * predict_seconds
+			target = predicted_position
+		elif state != STATE_AVOID and nearest_food.is_finite():
 			state = STATE_SEEK
 			target = nearest_food
 
@@ -433,14 +450,27 @@ func _apply_enemy_steering(enemy_id: StringName, enemy_node: Node2D, target_posi
 	if desired_direction == Vector2.ZERO:
 		desired_direction = heading
 
-	var turn_input: float = clamp(heading.cross(desired_direction) * 6.0, -1.0, 1.0)
+	var turn_scale: float = max(_ai_float("turn_responsiveness", 4.2), 0.5)
+	var turn_input: float = clamp(heading.cross(desired_direction) * turn_scale, -1.0, 1.0)
+	var hazard_avoid_turn: float = _compute_hazard_avoid_turn(enemy_id, enemy_node)
+	if abs(hazard_avoid_turn) > 0.001:
+		turn_input = hazard_avoid_turn
+
 	var state: StringName = _enemy_states.get(enemy_id, STATE_PATROL)
 	var boost_probability: float = clamp(_ai_float("boost_probability", 0.12) * _boost_scale, 0.0, 1.0)
 	var wants_boost: bool = false
-	if state == STATE_CHASE or state == STATE_AVOID:
-		wants_boost = _rng.randf() <= max(boost_probability, 0.25)
+	if abs(hazard_avoid_turn) > 0.001:
+		wants_boost = false
+		if state != STATE_AVOID:
+			_enemy_states[enemy_id] = STATE_AVOID
+			enemy_state_changed.emit(enemy_id, STATE_AVOID)
+		state = STATE_AVOID
+	elif state == STATE_CHASE:
+		wants_boost = _rng.randf() <= max(boost_probability * 0.8, 0.12)
+	elif state == STATE_AVOID:
+		wants_boost = _rng.randf() <= boost_probability * 0.2
 	elif state == STATE_SEEK:
-		wants_boost = _rng.randf() <= boost_probability * 0.5
+		wants_boost = _rng.randf() <= boost_probability * 0.4
 
 	enemy_node.call("set_ai_command", turn_input, wants_boost)
 
@@ -536,6 +566,77 @@ func _snake_head_radius(snake_id: StringName) -> float:
 			return max(float(value), 0.0)
 	return 0.0
 
+func _player_heading() -> Vector2:
+	if _player_snake_id == &"" or not _snake_nodes.has(_player_snake_id):
+		return Vector2.RIGHT
+	var player_node: Node2D = _snake_nodes[_player_snake_id]
+	if player_node.has_method("get_heading"):
+		var heading_value: Variant = player_node.call("get_heading")
+		if heading_value is Vector2 and (heading_value as Vector2) != Vector2.ZERO:
+			return (heading_value as Vector2).normalized()
+	return Vector2.RIGHT
+
+func _compute_hazard_avoid_turn(enemy_id: StringName, enemy_node: Node2D) -> float:
+	var heading: Vector2 = Vector2.RIGHT
+	if enemy_node.has_method("get_heading"):
+		var heading_value: Variant = enemy_node.call("get_heading")
+		if heading_value is Vector2 and (heading_value as Vector2) != Vector2.ZERO:
+			heading = (heading_value as Vector2).normalized()
+
+	var probe_distance: float = max(_ai_float("hazard_probe_distance", 180.0), 40.0)
+	var probe_angle: float = deg_to_rad(clamp(_ai_float("hazard_probe_angle_deg", 28.0), 5.0, 80.0))
+	var forward_probe: Vector2 = enemy_node.global_position + heading * probe_distance
+	if not _is_probe_position_dangerous(enemy_id, forward_probe):
+		return 0.0
+
+	var left_probe: Vector2 = enemy_node.global_position + heading.rotated(probe_angle) * probe_distance
+	var right_probe: Vector2 = enemy_node.global_position + heading.rotated(-probe_angle) * probe_distance
+	var left_danger: bool = _is_probe_position_dangerous(enemy_id, left_probe)
+	var right_danger: bool = _is_probe_position_dangerous(enemy_id, right_probe)
+	if left_danger and not right_danger:
+		return -1.0
+	if right_danger and not left_danger:
+		return 1.0
+
+	var toward_center: Vector2 = (-enemy_node.global_position).normalized()
+	if toward_center == Vector2.ZERO:
+		return 1.0
+	return clamp(heading.cross(toward_center) * 4.0, -1.0, 1.0)
+
+func _is_probe_position_dangerous(attacker_id: StringName, probe_position: Vector2) -> bool:
+	var boundary_margin: float = max(_ai_float("avoid_boundary_margin", 220.0), 40.0)
+	if probe_position.length() >= world_radius - boundary_margin:
+		return true
+
+	var max_check_distance: float = max(_ai_float("hazard_probe_distance", 180.0) * 2.5, 220.0)
+	var max_check_distance_squared: float = max_check_distance * max_check_distance
+	var probe_radius: float = max(head_to_body_collision_radius, 1.0)
+	for snake_id: StringName in _snake_nodes.keys():
+		if snake_id == attacker_id:
+			continue
+
+		var snake_node: Node2D = _snake_nodes[snake_id]
+		var head_distance_squared: float = snake_node.global_position.distance_squared_to(probe_position)
+		if head_distance_squared > max_check_distance_squared:
+			continue
+
+		var threat_head_radius: float = _snake_head_radius(snake_id) + probe_radius
+		if head_distance_squared <= threat_head_radius * threat_head_radius:
+			return true
+
+		if snake_node.has_method("collides_with_body"):
+			var collided_value: Variant = snake_node.call(
+				"collides_with_body",
+				probe_position,
+				probe_radius,
+				head_to_body_ignore_points,
+				head_to_body_sample_step
+			)
+			if collided_value is bool and collided_value:
+				return true
+
+	return false
+
 func _sort_leaderboard_entries(a: Dictionary, b: Dictionary) -> bool:
 	var length_a: float = float(a.get("length", 0.0))
 	var length_b: float = float(b.get("length", 0.0))
@@ -586,12 +687,12 @@ func _emit_mass_drop(drop_points: PackedVector2Array, fallback_position: Vector2
 	if total_amount <= 0:
 		return
 	if drop_points.is_empty():
-		snake_mass_dropped.emit(fallback_position, total_amount)
+		snake_mass_dropped.emit(fallback_position, total_amount, true)
 		return
 
 	var point_count: int = min(drop_points.size(), total_amount)
 	if point_count <= 0:
-		snake_mass_dropped.emit(fallback_position, total_amount)
+		snake_mass_dropped.emit(fallback_position, total_amount, true)
 		return
 
 	var denominator: float = float(max(point_count - 1, 1))
@@ -605,7 +706,7 @@ func _emit_mass_drop(drop_points: PackedVector2Array, fallback_position: Vector2
 		point_index = clampi(point_index, 0, max_index)
 		var amount: int = base_amount + (1 if i < remainder else 0)
 		if amount > 0:
-			snake_mass_dropped.emit(drop_points[point_index], amount)
+			snake_mass_dropped.emit(drop_points[point_index], amount, true)
 
 func _on_snake_mass_shed(world_position: Vector2, consumed_length: float, snake_id: StringName) -> void:
 	if consumed_length <= 0.0:
@@ -619,7 +720,7 @@ func _on_snake_mass_shed(world_position: Vector2, consumed_length: float, snake_
 	_shed_length_remainder[snake_id] = accumulated_length - float(drop_amount) * growth_unit
 
 	if drop_amount > 0:
-		snake_mass_dropped.emit(world_position, drop_amount)
+		snake_mass_dropped.emit(world_position, drop_amount, false)
 
 func _random_direction() -> Vector2:
 	var angle: float = _rng.randf_range(0.0, TAU)
@@ -629,6 +730,14 @@ func _ai_float(property_name: String, fallback: float) -> float:
 	if ai_config == null:
 		return fallback
 	var value: Variant = ai_config.get(property_name)
+	if value is float or value is int:
+		return float(value)
+	return fallback
+
+func _movement_float(property_name: String, fallback: float) -> float:
+	if movement_config == null:
+		return fallback
+	var value: Variant = movement_config.get(property_name)
 	if value is float or value is int:
 		return float(value)
 	return fallback

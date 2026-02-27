@@ -211,8 +211,8 @@ func _on_snake_died(snake_id: StringName, reason: StringName) -> void:
 		_set_match_state(&"respawning")
 		call_deferred("_respawn_player")
 
-func _on_snake_mass_dropped(world_position: Vector2, amount: int) -> void:
-	food_manager.spawn_food_burst(world_position, amount)
+func _on_snake_mass_dropped(world_position: Vector2, amount: int, bypass_food_cap: bool) -> void:
+	food_manager.spawn_food_burst(world_position, amount, bypass_food_cap)
 
 func _on_snake_spawned(snake_id: StringName) -> void:
 	snake_spawned.emit(snake_id)

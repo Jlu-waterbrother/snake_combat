@@ -10,8 +10,8 @@ enum ControlMode {
 
 @export var movement_config: Resource
 @export var skin: Resource
-@export var default_base_speed: float = 165.0
-@export var default_boost_speed: float = 255.0
+@export var default_base_speed: float = 123.75
+@export var default_boost_speed: float = 191.25
 @export var boost_body_drain_per_second: float = 18.0
 @export var min_body_length_for_boost: float = 120.0
 @export var min_body_length: float = 80.0
@@ -21,7 +21,7 @@ enum ControlMode {
 @export var max_visual_scale: float = 2.4
 @export var coiling_turn_threshold: float = 0.55
 @export var coiling_shrink_per_second: float = 8.0
-@export var default_turn_rate_deg_per_second: float = 300.0
+@export var default_turn_rate_deg_per_second: float = 180.0
 @export var default_segment_spacing: float = 10.0
 @export var body_length: float = 180.0
 @export var initial_heading: Vector2 = Vector2.RIGHT
