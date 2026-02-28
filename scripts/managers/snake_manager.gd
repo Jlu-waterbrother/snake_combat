@@ -3,7 +3,7 @@ class_name SnakeManager
 
 signal snake_spawned(snake_id: StringName)
 signal snake_died(snake_id: StringName, reason: StringName)
-signal snake_mass_dropped(world_position: Vector2, amount: int, bypass_food_cap: bool)
+signal snake_mass_dropped(world_position: Vector2, amount: int, bypass_food_cap: bool, drop_kind: StringName, drop_color: Color)
 signal score_changed(snake_id: StringName, score: int)
 signal enemy_state_changed(snake_id: StringName, state: StringName)
 
@@ -13,12 +13,16 @@ signal enemy_state_changed(snake_id: StringName, state: StringName)
 @export var ai_config: Resource
 @export var player_skin: Resource
 @export var enemy_skin: Resource
+@export var enemy_skins: Array[Resource] = []
 @export var growth_per_food: float = 10.0
+@export var default_drop_food_color: Color = Color(0.99, 0.8, 0.1, 1.0)
 @export var enemy_spawn_radius_min: float = 420.0
 @export var enemy_spawn_radius_max: float = 980.0
 @export var enemy_spawn_attempts: int = 24
 @export var enemy_spawn_player_safe_radius: float = 420.0
 @export var enemy_spawn_front_block_dot: float = 0.2
+@export var player_spawn_attempts: int = 36
+@export var player_spawn_clearance_radius: float = 24.0
 @export var player_respawn_invincibility_seconds: float = 3.0
 @export var world_radius: float = 2200.0
 @export var head_to_body_collision_radius: float = 8.0
@@ -88,7 +92,7 @@ func spawn_player_snake() -> StringName:
 		push_error("player_snake_scene is not assigned on SnakeManager.")
 		return &""
 
-	if not _spawn_snake(snake_id, player_snake_scene, Vector2.ZERO, false):
+	if not _spawn_snake(snake_id, player_snake_scene, _sample_player_spawn_position(), false):
 		return &""
 
 	_player_snake_id = snake_id
@@ -148,9 +152,11 @@ func kill_snake(snake_id: StringName, reason: StringName) -> void:
 	var drop_position: Vector2 = Vector2.ZERO
 	var drop_amount: int = 0
 	var drop_points: PackedVector2Array = PackedVector2Array()
+	var drop_color: Color = default_drop_food_color
 	if _snake_nodes.has(snake_id):
 		var snake_node: Node2D = _snake_nodes[snake_id]
 		drop_position = snake_node.global_position
+		drop_color = _snake_drop_food_color_from_node(snake_node)
 		if allow_mass_drop and snake_node.has_method("get_body_length"):
 			var body_length_value: Variant = snake_node.call("get_body_length")
 			if body_length_value is float or body_length_value is int:
@@ -179,7 +185,7 @@ func kill_snake(snake_id: StringName, reason: StringName) -> void:
 		_enemy_hazard_turn_cache.erase(snake_id)
 
 	if allow_mass_drop and drop_amount > 0:
-		_emit_mass_drop(drop_points, drop_position, drop_amount)
+		_emit_mass_drop(drop_points, drop_position, drop_amount, drop_color)
 
 	snake_died.emit(snake_id, reason)
 
@@ -281,7 +287,9 @@ func _spawn_snake(snake_id: StringName, snake_scene: PackedScene, spawn_position
 
 	var applied_skin: bool = false
 	if snake_node.has_method("set_skin"):
-		var selected_skin: Resource = enemy_skin if is_enemy else player_skin
+		var selected_skin: Resource = player_skin
+		if is_enemy:
+			selected_skin = _pick_enemy_skin()
 		if selected_skin != null:
 			snake_node.call("set_skin", selected_skin)
 			applied_skin = true
@@ -305,6 +313,18 @@ func _spawn_snake(snake_id: StringName, snake_scene: PackedScene, spawn_position
 	_shed_length_remainder[snake_id] = 0.0
 	_snake_display_names[snake_id] = _generate_enemy_name() if is_enemy else "Player"
 	return true
+
+func _pick_enemy_skin() -> Resource:
+	var skin_candidates: Array[Resource] = []
+	for candidate_skin: Resource in enemy_skins:
+		if candidate_skin != null:
+			skin_candidates.append(candidate_skin)
+
+	if skin_candidates.is_empty():
+		return enemy_skin
+
+	var index: int = _rng.randi_range(0, skin_candidates.size() - 1)
+	return skin_candidates[index]
 
 func _sample_enemy_spawn_position() -> Vector2:
 	var min_radius: float = max(enemy_spawn_radius_min, 120.0)
@@ -351,6 +371,75 @@ func _sample_enemy_spawn_position() -> Vector2:
 func _sample_ring_spawn_position(min_radius: float, max_radius: float) -> Vector2:
 	var angle: float = _rng.randf_range(0.0, TAU)
 	var radius: float = _rng.randf_range(min_radius, max_radius)
+	return Vector2(cos(angle), sin(angle)) * radius
+
+func _sample_player_spawn_position() -> Vector2:
+	var attempts: int = max(player_spawn_attempts, 1)
+	var clearance_radius: float = max(player_spawn_clearance_radius, 8.0)
+	var safe_world_radius: float = max(world_radius - clearance_radius - 48.0, 140.0)
+	var preferred_radius: float = min(safe_world_radius, max(world_radius * 0.35, 160.0))
+	var best_candidate: Vector2 = Vector2.ZERO
+	var best_clearance: float = -INF
+
+	for _attempt: int in range(attempts):
+		var candidate: Vector2 = _random_point_in_radius(preferred_radius)
+		var clearance: float = _spawn_position_clearance(candidate, clearance_radius)
+		if clearance > best_clearance:
+			best_clearance = clearance
+			best_candidate = candidate
+		if _is_spawn_position_safe(candidate, clearance_radius):
+			return candidate
+
+	for _attempt: int in range(attempts):
+		var candidate: Vector2 = _random_point_in_radius(safe_world_radius)
+		var clearance: float = _spawn_position_clearance(candidate, clearance_radius)
+		if clearance > best_clearance:
+			best_clearance = clearance
+			best_candidate = candidate
+		if _is_spawn_position_safe(candidate, clearance_radius):
+			return candidate
+
+	if _is_spawn_position_safe(best_candidate, clearance_radius):
+		return best_candidate
+	if _is_spawn_position_safe(Vector2.ZERO, clearance_radius):
+		return Vector2.ZERO
+	return best_candidate
+
+func _is_spawn_position_safe(candidate: Vector2, clearance_radius: float) -> bool:
+	if candidate.length() + clearance_radius >= world_radius - 40.0:
+		return false
+
+	var body_probe_radius: float = max(clearance_radius, head_to_body_collision_radius)
+	for snake_id: StringName in _snake_nodes.keys():
+		var snake_node: Node2D = _snake_nodes[snake_id]
+		var min_head_clearance: float = _snake_head_radius(snake_id) + clearance_radius + 12.0
+		if snake_node.global_position.distance_squared_to(candidate) <= min_head_clearance * min_head_clearance:
+			return false
+
+		if snake_node.has_method("collides_with_body"):
+			var collided_value: Variant = snake_node.call(
+				"collides_with_body",
+				candidate,
+				body_probe_radius,
+				0,
+				max(head_to_body_sample_step, 1)
+			)
+			if collided_value is bool and collided_value:
+				return false
+
+	return true
+
+func _spawn_position_clearance(candidate: Vector2, clearance_radius: float) -> float:
+	var clearance: float = world_radius - (candidate.length() + clearance_radius)
+	for snake_id: StringName in _snake_nodes.keys():
+		var snake_node: Node2D = _snake_nodes[snake_id]
+		var head_clearance: float = snake_node.global_position.distance_to(candidate) - (_snake_head_radius(snake_id) + clearance_radius)
+		clearance = min(clearance, head_clearance)
+	return clearance
+
+func _random_point_in_radius(radius_limit: float) -> Vector2:
+	var angle: float = _rng.randf_range(0.0, TAU)
+	var radius: float = sqrt(_rng.randf()) * max(radius_limit, 0.0)
 	return Vector2(cos(angle), sin(angle)) * radius
 
 func _update_enemy_ai(delta: float) -> void:
@@ -712,16 +801,18 @@ func _is_snake_invincible(snake_id: StringName) -> bool:
 	var remaining: float = float(_invincibility_remaining.get(snake_id, 0.0))
 	return remaining > 0.0
 
-func _emit_mass_drop(drop_points: PackedVector2Array, fallback_position: Vector2, total_amount: int) -> void:
+func _emit_mass_drop(drop_points: PackedVector2Array, fallback_position: Vector2, total_amount: int, drop_color: Color) -> void:
 	if total_amount <= 0:
 		return
 	if drop_points.is_empty():
-		snake_mass_dropped.emit(fallback_position, total_amount, true)
+		snake_mass_dropped.emit(fallback_position, total_amount, true, &"defeat", drop_color)
 		return
 
-	var point_count: int = min(drop_points.size(), total_amount)
+	var chunk_value: int = _death_drop_chunk_value(total_amount)
+	var desired_drop_count: int = int(ceil(float(total_amount) / float(chunk_value)))
+	var point_count: int = min(drop_points.size(), max(desired_drop_count, 1))
 	if point_count <= 0:
-		snake_mass_dropped.emit(fallback_position, total_amount, true)
+		snake_mass_dropped.emit(fallback_position, total_amount, true, &"defeat", drop_color)
 		return
 
 	var denominator: float = float(max(point_count - 1, 1))
@@ -735,7 +826,12 @@ func _emit_mass_drop(drop_points: PackedVector2Array, fallback_position: Vector2
 		point_index = clampi(point_index, 0, max_index)
 		var amount: int = base_amount + (1 if i < remainder else 0)
 		if amount > 0:
-			snake_mass_dropped.emit(drop_points[point_index], amount, true)
+			snake_mass_dropped.emit(drop_points[point_index], amount, true, &"defeat", drop_color)
+
+func _death_drop_chunk_value(total_amount: int) -> int:
+	var normalized_total: int = max(total_amount, 1)
+	var chunk: int = int(floor(sqrt(float(normalized_total)) * 0.5))
+	return clampi(chunk, 1, 8)
 
 func _on_snake_mass_shed(world_position: Vector2, consumed_length: float, snake_id: StringName) -> void:
 	if consumed_length <= 0.0:
@@ -749,7 +845,20 @@ func _on_snake_mass_shed(world_position: Vector2, consumed_length: float, snake_
 	_shed_length_remainder[snake_id] = accumulated_length - float(drop_amount) * growth_unit
 
 	if drop_amount > 0:
-		snake_mass_dropped.emit(world_position, drop_amount, true)
+		var drop_color: Color = _snake_drop_food_color(snake_id)
+		snake_mass_dropped.emit(world_position, drop_amount, true, &"shed", drop_color)
+
+func _snake_drop_food_color(snake_id: StringName) -> Color:
+	if not _snake_nodes.has(snake_id):
+		return default_drop_food_color
+	return _snake_drop_food_color_from_node(_snake_nodes[snake_id])
+
+func _snake_drop_food_color_from_node(snake_node: Node2D) -> Color:
+	if snake_node.has_method("get_food_drop_color"):
+		var drop_color_value: Variant = snake_node.call("get_food_drop_color")
+		if drop_color_value is Color:
+			return drop_color_value
+	return default_drop_food_color
 
 func _random_direction() -> Vector2:
 	var angle: float = _rng.randf_range(0.0, TAU)

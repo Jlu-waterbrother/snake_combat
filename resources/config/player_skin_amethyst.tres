@@ -6,10 +6,10 @@
 
 [resource]
 script = ExtResource("1")
-head_color = Color(0.29, 0.8, 1, 1)
-body_color = Color(0.17, 0.35, 0.86, 1)
-head_radius_scale = 1.05
-body_width_scale = 0.92
+head_color = Color(0.9, 0.67, 1, 1)
+body_color = Color(0.55, 0.3, 0.86, 1)
+head_radius_scale = 1.04
+body_width_scale = 0.91
 head_texture = ExtResource("2")
-head_svg_path = "res://resources/textures/skins/head_azure.svg"
+head_svg_path = "res://resources/textures/skins/head_amethyst.svg"
 body_texture = ExtResource("3")

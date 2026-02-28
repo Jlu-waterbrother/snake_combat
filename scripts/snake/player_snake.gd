@@ -25,6 +25,8 @@ enum ControlMode {
 @export var default_segment_spacing: float = 10.0
 @export var body_length: float = 180.0
 @export var initial_heading: Vector2 = Vector2.RIGHT
+@export var rotate_head_texture_with_heading: bool = true
+@export var head_svg_render_scale: float = 2.0
 @export var head_radius: float = 10.0
 @export var head_color: Color = Color(0.22, 0.84, 0.31)
 @export var self_collision_radius: float = 9.0
@@ -52,6 +54,8 @@ var _skin_body_width_scale: float = 1.0
 var _skin_head_texture: Texture2D
 var _skin_body_texture: Texture2D
 var _head_sprite: Sprite2D
+
+static var _svg_head_texture_cache: Dictionary = {}
 
 func _ready() -> void:
 	_heading = initial_heading.normalized()
@@ -98,6 +102,7 @@ func _physics_process(delta: float) -> void:
 
 	var turn_input: float = _read_turn_input()
 	_heading = _heading.rotated(deg_to_rad(turn_rate_deg) * turn_input * delta).normalized()
+	_sync_head_texture_rotation()
 
 	var wants_boost: bool = _wants_boost()
 	var can_boost: bool = _can_boost(wants_boost)
@@ -111,7 +116,7 @@ func _physics_process(delta: float) -> void:
 		boost_length_loss = max(previous_length - body_length, 0.0)
 
 	var contraction_factor: float = _coiling_contraction_factor(abs(turn_input))
-	if contraction_factor > 0.0:
+	if can_boost and contraction_factor > 0.0:
 		body_length = max(body_length - coiling_shrink_per_second * contraction_factor * delta, min_body_length)
 
 	_sync_visual_scale()
@@ -173,6 +178,9 @@ func get_body_points() -> PackedVector2Array:
 func get_heading() -> Vector2:
 	return _heading
 
+func get_food_drop_color() -> Color:
+	return _skin_body_color
+
 func get_body_collision_radius() -> float:
 	if body_line == null:
 		return head_radius
@@ -229,6 +237,7 @@ func _apply_skin() -> void:
 	var next_body_scale: float = 1.0
 	var next_head_texture: Texture2D = null
 	var next_body_texture: Texture2D = null
+	var next_head_svg_path: String = ""
 
 	if skin != null:
 		next_head_color = _skin_color("head_color", _skin_head_color)
@@ -237,6 +246,11 @@ func _apply_skin() -> void:
 		next_body_scale = max(_skin_number("body_width_scale", 1.0), 0.4)
 		next_head_texture = _skin_texture("head_texture")
 		next_body_texture = _skin_texture("body_texture")
+		next_head_svg_path = _skin_string("head_svg_path", "")
+		if not next_head_svg_path.is_empty():
+			var svg_head_texture: Texture2D = _load_head_texture_from_svg(next_head_svg_path)
+			if svg_head_texture != null:
+				next_head_texture = svg_head_texture
 
 	_skin_head_color = next_head_color
 	_skin_body_color = next_body_color
@@ -353,7 +367,7 @@ func _sync_body_style() -> void:
 	if _skin_body_texture != null:
 		body_line.texture = _skin_body_texture
 		body_line.texture_mode = Line2D.LINE_TEXTURE_TILE
-		body_line.default_color = Color.WHITE
+		body_line.default_color = _skin_body_color
 	else:
 		body_line.texture = null
 		body_line.texture_mode = Line2D.LINE_TEXTURE_NONE
@@ -368,6 +382,7 @@ func _sync_head_visual() -> void:
 		return
 
 	_head_sprite.texture = _skin_head_texture
+	_head_sprite.modulate = _skin_head_color
 	var texture_size: Vector2 = _skin_head_texture.get_size()
 	var max_dimension: float = max(texture_size.x, texture_size.y)
 	var target_diameter: float = max(head_radius * 2.0, 1.0)
@@ -376,6 +391,15 @@ func _sync_head_visual() -> void:
 		scale_factor = target_diameter / max_dimension
 	_head_sprite.scale = Vector2.ONE * scale_factor
 	_head_sprite.visible = true
+	_sync_head_texture_rotation()
+
+func _sync_head_texture_rotation() -> void:
+	if _head_sprite == null or not _head_sprite.visible:
+		return
+	if rotate_head_texture_with_heading:
+		_head_sprite.rotation = _heading.angle()
+	else:
+		_head_sprite.rotation = 0.0
 
 func _config_number(property_name: String, fallback: float) -> float:
 	if movement_config == null:
@@ -412,3 +436,40 @@ func _skin_texture(property_name: String) -> Texture2D:
 	if value is Texture2D:
 		return value
 	return null
+
+func _skin_string(property_name: String, fallback: String) -> String:
+	if skin == null:
+		return fallback
+
+	var value: Variant = skin.get(property_name)
+	if value is String or value is StringName:
+		return String(value)
+	return fallback
+
+func _load_head_texture_from_svg(svg_path: String) -> Texture2D:
+	if svg_path.is_empty():
+		return null
+
+	var cached_value: Variant = _svg_head_texture_cache.get(svg_path, null)
+	if cached_value is Texture2D:
+		return cached_value as Texture2D
+
+	if not FileAccess.file_exists(svg_path):
+		push_warning("Snake head SVG path does not exist: %s" % svg_path)
+		return null
+
+	var svg_file: FileAccess = FileAccess.open(svg_path, FileAccess.READ)
+	if svg_file == null:
+		push_warning("Unable to open snake head SVG: %s" % svg_path)
+		return null
+
+	var svg_text: String = svg_file.get_as_text()
+	var image: Image = Image.new()
+	var parse_error: Error = image.load_svg_from_string(svg_text, max(head_svg_render_scale, 0.1))
+	if parse_error != OK:
+		push_warning("Unable to parse snake head SVG: %s" % svg_path)
+		return null
+
+	var generated_texture: ImageTexture = ImageTexture.create_from_image(image)
+	_svg_head_texture_cache[svg_path] = generated_texture
+	return generated_texture

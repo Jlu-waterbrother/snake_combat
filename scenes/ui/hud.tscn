@@ -13,6 +13,12 @@ offset_bottom = 560.0
 
 [node name="Rows" type="VBoxContainer" parent="Margin"]
 
+[node name="LeaderboardLabel" type="Label" parent="Margin/Rows"]
+text = "Leaderboard"
+
+[node name="LeaderboardValue" type="Label" parent="Margin/Rows"]
+text = "-"
+
 [node name="StateLabel" type="Label" parent="Margin/Rows"]
 text = "State"
 
@@ -49,8 +55,29 @@ text = "Message"
 [node name="MessageValue" type="Label" parent="Margin/Rows"]
 text = "Ready"
 
-[node name="LeaderboardLabel" type="Label" parent="Margin/Rows"]
-text = "Leaderboard"
+[node name="PreMatchPanel" type="PanelContainer" parent="."]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -300.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 200.0
 
-[node name="LeaderboardValue" type="Label" parent="Margin/Rows"]
-text = "-"
+[node name="Margin" type="MarginContainer" parent="PreMatchPanel"]
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 272.0
+offset_bottom = 172.0
+
+[node name="VBox" type="VBoxContainer" parent="PreMatchPanel/Margin"]
+
+[node name="Title" type="Label" parent="PreMatchPanel/Margin/VBox"]
+text = "Pre-Match Skin"
+
+[node name="SkinLabel" type="Label" parent="PreMatchPanel/Margin/VBox"]
+text = "Player Skin"
+
+[node name="SkinSelect" type="OptionButton" parent="PreMatchPanel/Margin/VBox"]
+
+[node name="StartButton" type="Button" parent="PreMatchPanel/Margin/VBox"]
+text = "Start Match"

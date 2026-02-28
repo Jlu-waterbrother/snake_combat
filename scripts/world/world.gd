@@ -15,6 +15,12 @@ signal leaderboard_changed(entries: Array[Dictionary])
 @export var ai_config: Resource
 @export var camera_follow_lerp_speed: float = 8.0
 @export var world_radius: float = 2200.0
+@export var background_color: Color = Color(0.94, 0.98, 0.95, 1.0)
+@export var grid_minor_color: Color = Color(0.35, 0.52, 0.42, 0.08)
+@export var grid_major_color: Color = Color(0.27, 0.42, 0.33, 0.14)
+@export var grid_cell_size: float = 60.0
+@export var grid_major_every: int = 5
+@export var grid_margin: float = 180.0
 @export var boundary_color: Color = Color(1.0, 0.2, 0.2, 0.95)
 @export var boundary_inner_color: Color = Color(1.0, 0.6, 0.2, 0.55)
 @export var boundary_line_width: float = 16.0
@@ -75,6 +81,20 @@ func _ready() -> void:
 
 func _draw() -> void:
 	var radius: float = max(world_radius, 1.0)
+	var extent: float = radius + max(grid_margin, 0.0)
+	var background_rect: Rect2 = Rect2(Vector2(-extent, -extent), Vector2(extent * 2.0, extent * 2.0))
+	draw_rect(background_rect, background_color, true)
+
+	var cell_size: float = max(grid_cell_size, 12.0)
+	var major_step: int = max(grid_major_every, 1)
+	var min_grid: int = int(floor(-extent / cell_size))
+	var max_grid: int = int(ceil(extent / cell_size))
+	for grid_index: int in range(min_grid, max_grid + 1):
+		var line_pos: float = float(grid_index) * cell_size
+		var line_color: Color = grid_major_color if posmod(grid_index, major_step) == 0 else grid_minor_color
+		draw_line(Vector2(line_pos, -extent), Vector2(line_pos, extent), line_color, 1.0, true)
+		draw_line(Vector2(-extent, line_pos), Vector2(extent, line_pos), line_color, 1.0, true)
+
 	var line_width: float = max(boundary_line_width, 2.0)
 	var warning_radius: float = max(radius - max(boundary_warning_band, 0.0), line_width)
 	draw_arc(Vector2.ZERO, radius, 0.0, TAU, 256, boundary_color, line_width, true)
@@ -129,6 +149,16 @@ func set_pause_state(paused: bool) -> void:
 		_set_match_state(&"running")
 		return
 	_set_match_state(_pre_pause_state)
+
+func set_player_skin(skin: Resource) -> void:
+	if snake_manager == null:
+		return
+	snake_manager.player_skin = skin
+
+func get_player_skin() -> Resource:
+	if snake_manager == null:
+		return null
+	return snake_manager.player_skin
 
 func _update_dynamic_difficulty(delta: float) -> void:
 	if _camera_target_snake_id == &"":
@@ -211,8 +241,9 @@ func _on_snake_died(snake_id: StringName, reason: StringName) -> void:
 		_set_match_state(&"respawning")
 		call_deferred("_respawn_player")
 
-func _on_snake_mass_dropped(world_position: Vector2, amount: int, bypass_food_cap: bool) -> void:
-	food_manager.spawn_food_burst(world_position, amount, bypass_food_cap)
+func _on_snake_mass_dropped(world_position: Vector2, amount: int, bypass_food_cap: bool, drop_kind: StringName, drop_color: Color) -> void:
+	var split_into_units: bool = drop_kind != &"defeat"
+	food_manager.spawn_food_burst(world_position, amount, bypass_food_cap, split_into_units, drop_color)
 
 func _on_snake_spawned(snake_id: StringName) -> void:
 	snake_spawned.emit(snake_id)

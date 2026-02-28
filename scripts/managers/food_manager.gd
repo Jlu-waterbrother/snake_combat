@@ -12,6 +12,13 @@ signal food_eaten(snake_id: StringName, amount: int)
 @export var spawn_attempts: int = 8
 @export var max_active_food_count: int = 420
 @export var spatial_cell_size: float = 220.0
+@export var food_color_palette: PackedColorArray = PackedColorArray([
+	Color(0.99, 0.8, 0.1, 1.0),
+	Color(0.98, 0.46, 0.19, 1.0),
+	Color(0.85, 0.31, 0.86, 1.0),
+	Color(0.32, 0.82, 0.95, 1.0),
+	Color(0.33, 0.86, 0.49, 1.0),
+])
 
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _next_food_id: int = 1
@@ -34,16 +41,27 @@ func bootstrap_food() -> void:
 	for _i: int in range(bootstrap_count):
 		_spawn_food_at_position(_sample_spawn_point(), 1)
 
-func spawn_food_burst(center_position: Vector2, amount: int, ignore_food_cap: bool = false) -> void:
+func spawn_food_burst(
+	center_position: Vector2,
+	amount: int,
+	ignore_food_cap: bool = false,
+	split_into_units: bool = true,
+	food_color: Variant = null
+) -> void:
 	if amount <= 0:
 		push_warning("Food burst amount must be positive.")
 		return
 
-	_ensure_pool_capacity(_active_food.size() + amount, ignore_food_cap)
+	var spawn_count: int = amount if split_into_units else 1
+	_ensure_pool_capacity(_active_food.size() + spawn_count, ignore_food_cap)
+	if not split_into_units:
+		_spawn_food_at_position(center_position, amount, ignore_food_cap, food_color)
+		return
+
 	var burst_radius: float = min(spawn_radius * 0.05, 120.0)
 	for _i: int in range(amount):
 		var offset: Vector2 = Vector2.ZERO if amount == 1 else _random_point_in_radius(burst_radius)
-		_spawn_food_at_position(center_position + offset, 1, ignore_food_cap)
+		_spawn_food_at_position(center_position + offset, 1, ignore_food_cap, food_color)
 
 func get_nearest_food_position(origin: Vector2, max_distance: float) -> Vector2:
 	var query: Dictionary = {&"single": origin}
@@ -114,7 +132,7 @@ func _ensure_pool_capacity(target_count: int, ignore_food_cap: bool = false) -> 
 			return
 		_inactive_food.append(food_node)
 
-func _spawn_food_at_position(point: Vector2, food_amount: int, ignore_food_cap: bool = false) -> void:
+func _spawn_food_at_position(point: Vector2, food_amount: int, ignore_food_cap: bool = false, food_color: Variant = null) -> void:
 	if not ignore_food_cap and max_active_food_count > 0 and _active_food.size() >= max_active_food_count:
 		if _active_food.is_empty():
 			return
@@ -125,7 +143,7 @@ func _spawn_food_at_position(point: Vector2, food_amount: int, ignore_food_cap: 
 
 		var recycled_food_id: int = _next_food_id
 		_next_food_id += 1
-		_activate_food_node(recycled_food, recycled_food_id, point, food_amount, ignore_food_cap)
+		_activate_food_node(recycled_food, recycled_food_id, point, food_amount, ignore_food_cap, food_color)
 		return
 
 	var food_node: Area2D = _acquire_food_node(ignore_food_cap)
@@ -134,12 +152,20 @@ func _spawn_food_at_position(point: Vector2, food_amount: int, ignore_food_cap: 
 
 	var food_id: int = _next_food_id
 	_next_food_id += 1
-	_activate_food_node(food_node, food_id, point, food_amount, ignore_food_cap)
+	_activate_food_node(food_node, food_id, point, food_amount, ignore_food_cap, food_color)
 
-func _activate_food_node(food_node: Area2D, food_id: int, point: Vector2, food_amount: int, _ignore_food_cap: bool = false) -> void:
+func _activate_food_node(
+	food_node: Area2D,
+	food_id: int,
+	point: Vector2,
+	food_amount: int,
+	_ignore_food_cap: bool = false,
+	food_color: Variant = null
+) -> void:
 	_untrack_food_node(food_node)
+	var resolved_color: Color = _resolve_food_color(food_color)
 	if food_node.has_method("configure"):
-		food_node.call("configure", food_id, point, food_amount)
+		food_node.call("configure", food_id, point, food_amount, resolved_color)
 	else:
 		food_node.global_position = point
 		food_node.visible = true
@@ -238,6 +264,16 @@ func _random_point_in_radius(radius_limit: float) -> Vector2:
 	var angle: float = _rng.randf_range(0.0, TAU)
 	var radius: float = sqrt(_rng.randf()) * radius_limit
 	return Vector2(cos(angle), sin(angle)) * radius
+
+func _resolve_food_color(custom_color: Variant) -> Color:
+	if custom_color is Color:
+		return custom_color
+
+	if not food_color_palette.is_empty():
+		var color_index: int = _rng.randi_range(0, food_color_palette.size() - 1)
+		return food_color_palette[color_index]
+
+	return Color(0.99, 0.8, 0.1, 1.0)
 
 func _on_food_consumed(snake_id: StringName, amount: int, food_node: Area2D) -> void:
 	if not _active_food.has(food_node):

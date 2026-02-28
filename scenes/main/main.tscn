@@ -4,9 +4,16 @@
 [ext_resource type="PackedScene" path="res://scenes/world/world.tscn" id="2"]
 [ext_resource type="PackedScene" path="res://scenes/ui/hud.tscn" id="3"]
 [ext_resource type="PackedScene" path="res://scenes/ui/mobile_controls.tscn" id="4"]
+[ext_resource type="Resource" path="res://resources/config/default_player_skin.tres" id="5"]
+[ext_resource type="Resource" path="res://resources/config/player_skin_ruby.tres" id="6"]
+[ext_resource type="Resource" path="res://resources/config/player_skin_jade.tres" id="7"]
+[ext_resource type="Resource" path="res://resources/config/player_skin_solar.tres" id="8"]
+[ext_resource type="Resource" path="res://resources/config/player_skin_amethyst.tres" id="9"]
 
 [node name="Main" type="Node" unique_id=1575394122]
 script = ExtResource("1")
+available_player_skins = Array[Resource]([ExtResource("5"), ExtResource("6"), ExtResource("7"), ExtResource("8"), ExtResource("9")])
+available_player_skin_names = PackedStringArray("Azure", "Ruby", "Jade", "Solar", "Amethyst")
 
 [node name="World" parent="." unique_id=540202241 instance=ExtResource("2")]
 

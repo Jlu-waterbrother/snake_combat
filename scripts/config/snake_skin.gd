@@ -6,4 +6,5 @@ class_name SnakeSkin
 @export var head_radius_scale: float = 1.0
 @export var body_width_scale: float = 1.0
 @export var head_texture: Texture2D
+@export var head_svg_path: String = ""
 @export var body_texture: Texture2D
