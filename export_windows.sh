@@ -7,14 +7,16 @@ PRESET_NAME="Windows Desktop"
 PROJECT_NAME="snake_combat"
 OUTPUT_NAME="${PROJECT_NAME}"
 CHECK_ONLY=false
+USE_UPX=true
 
 usage() {
   cat <<'EOF'
-Usage: ./export_windows.sh [--name <output_name>] [--check]
+Usage: ./export_windows.sh [--name <output_name>] [--check] [--no-upx]
 
 Options:
   --name <output_name>  Output file base name (default: snake_combat)
   --check               Validate export prerequisites only (no build)
+  --no-upx              Skip executable compression with UPX
   -h, --help            Show this help message
 EOF
 }
@@ -31,6 +33,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     --check)
       CHECK_ONLY=true
+      ;;
+    --no-upx)
+      USE_UPX=false
       ;;
     -h|--help)
       usage
@@ -78,18 +83,27 @@ OUTPUT_EXE="${EXPORT_DIR}/${OUTPUT_NAME}.exe"
 
 "${GODOT_CMD[@]}" --headless --path "${PROJECT_DIR}" --export-release "${PRESET_NAME}" "${OUTPUT_EXE}"
 
+if [[ "${USE_UPX}" == "true" ]]; then
+  if command -v upx >/dev/null 2>&1; then
+    upx --best --lzma "${OUTPUT_EXE}"
+  else
+    echo "Tip: install UPX to shrink EXE further (sudo apt install upx-ucl)."
+  fi
+fi
+
 PCK_PATH="${OUTPUT_EXE%.exe}.pck"
 if command -v zip >/dev/null 2>&1; then
   ZIP_PATH="${EXPORT_DIR}/${OUTPUT_NAME}_windows.zip"
+  rm -f "${ZIP_PATH}"
   if [[ -f "${PCK_PATH}" ]]; then
     (
       cd "${EXPORT_DIR}"
-      zip -9 -q "$(basename "${ZIP_PATH}")" "$(basename "${OUTPUT_EXE}")" "$(basename "${PCK_PATH}")"
+      zip -9 -q -X "$(basename "${ZIP_PATH}")" "$(basename "${OUTPUT_EXE}")" "$(basename "${PCK_PATH}")"
     )
   else
     (
       cd "${EXPORT_DIR}"
-      zip -9 -q "$(basename "${ZIP_PATH}")" "$(basename "${OUTPUT_EXE}")"
+      zip -9 -q -X "$(basename "${ZIP_PATH}")" "$(basename "${OUTPUT_EXE}")"
     )
   fi
   echo "Compressed package: ${ZIP_PATH}"
