@@ -290,5 +290,5 @@ func _on_food_consumed(snake_id: StringName, amount: int, food_node: Area2D) -> 
 	_inactive_food.append(food_node)
 	food_eaten.emit(snake_id, amount)
 
-	if respawn_on_consume:
+	if respawn_on_consume and (max_active_food_count <= 0 or _active_food.size() < max_active_food_count):
 		_spawn_food_at_position(_sample_spawn_point(), 1)

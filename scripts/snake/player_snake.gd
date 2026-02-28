@@ -11,7 +11,7 @@ enum ControlMode {
 @export var movement_config: Resource
 @export var skin: Resource
 @export var default_base_speed: float = 123.75
-@export var default_boost_speed: float = 191.25
+@export var default_boost_speed: float = 210.0
 @export var boost_body_drain_per_second: float = 18.0
 @export var min_body_length_for_boost: float = 120.0
 @export var min_body_length: float = 80.0
@@ -97,9 +97,8 @@ func _physics_process(delta: float) -> void:
 	var turn_rate_deg: float = _config_number("turn_rate_deg_per_second", default_turn_rate_deg_per_second)
 	_segment_spacing = max(_config_number("segment_spacing", default_segment_spacing), 1.0)
 
-	var growth_ratio: float = max(body_length / 180.0, 1.0)
-	var base_speed: float = base_speed_raw / (1.0 + (growth_ratio - 1.0) * 0.15)
-	var boost_speed: float = boost_speed_raw / (1.0 + (growth_ratio - 1.0) * 0.1)
+	var base_speed: float = base_speed_raw
+	var boost_speed: float = boost_speed_raw
 
 	var turn_input: float = _read_turn_input()
 	_heading = _heading.rotated(deg_to_rad(turn_rate_deg) * turn_input * delta).normalized()
