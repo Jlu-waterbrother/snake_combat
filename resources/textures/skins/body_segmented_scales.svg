@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="64" viewBox="0 0 192 64">
+  <rect x="0" y="0" width="192" height="64" rx="32" fill="#ffffff" fill-opacity="0.94"/>
+  <g stroke="#000000" stroke-opacity="0.26" stroke-width="2.4" fill="none">
+    <path d="M16 8 L16 56"/>
+    <path d="M48 8 L48 56"/>
+    <path d="M80 8 L80 56"/>
+    <path d="M112 8 L112 56"/>
+    <path d="M144 8 L144 56"/>
+    <path d="M176 8 L176 56"/>
+  </g>
+  <g stroke="#000000" stroke-opacity="0.2" stroke-width="1.6" fill="none">
+    <path d="M0 20 Q16 6 32 20 Q16 34 0 20 Z"/>
+    <path d="M32 20 Q48 6 64 20 Q48 34 32 20 Z"/>
+    <path d="M64 20 Q80 6 96 20 Q80 34 64 20 Z"/>
+    <path d="M96 20 Q112 6 128 20 Q112 34 96 20 Z"/>
+    <path d="M128 20 Q144 6 160 20 Q144 34 128 20 Z"/>
+    <path d="M160 20 Q176 6 192 20 Q176 34 160 20 Z"/>
+    <path d="M16 36 Q32 22 48 36 Q32 50 16 36 Z"/>
+    <path d="M48 36 Q64 22 80 36 Q64 50 48 36 Z"/>
+    <path d="M80 36 Q96 22 112 36 Q96 50 80 36 Z"/>
+    <path d="M112 36 Q128 22 144 36 Q128 50 112 36 Z"/>
+    <path d="M144 36 Q160 22 176 36 Q160 50 144 36 Z"/>
+  </g>
+  <path d="M0 10 Q48 0 96 10 T192 10" fill="none" stroke="#ffffff" stroke-opacity="0.34" stroke-width="3"/>
+  <path d="M0 54 Q48 64 96 54 T192 54" fill="none" stroke="#000000" stroke-opacity="0.18" stroke-width="3"/>
+</svg>

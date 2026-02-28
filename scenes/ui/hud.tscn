@@ -13,12 +13,6 @@ offset_bottom = 560.0
 
 [node name="Rows" type="VBoxContainer" parent="Margin"]
 
-[node name="LeaderboardLabel" type="Label" parent="Margin/Rows"]
-text = "Leaderboard"
-
-[node name="LeaderboardValue" type="Label" parent="Margin/Rows"]
-text = "-"
-
 [node name="StateLabel" type="Label" parent="Margin/Rows"]
 text = "State"
 
@@ -54,6 +48,26 @@ text = "Message"
 
 [node name="MessageValue" type="Label" parent="Margin/Rows"]
 text = "Ready"
+
+[node name="LeaderboardMargin" type="MarginContainer" parent="."]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -340.0
+offset_top = 16.0
+offset_right = 0.0
+offset_bottom = 300.0
+
+[node name="Rows" type="VBoxContainer" parent="LeaderboardMargin"]
+
+[node name="LeaderboardLabel" type="Label" parent="LeaderboardMargin/Rows"]
+size_flags_horizontal = 3
+horizontal_alignment = 2
+text = "Leaderboard"
+
+[node name="LeaderboardValue" type="Label" parent="LeaderboardMargin/Rows"]
+size_flags_horizontal = 3
+horizontal_alignment = 2
+text = "-"
 
 [node name="PreMatchPanel" type="PanelContainer" parent="."]
 anchor_left = 1.0

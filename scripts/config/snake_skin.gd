@@ -8,3 +8,4 @@ class_name SnakeSkin
 @export var head_texture: Texture2D
 @export var head_svg_path: String = ""
 @export var body_texture: Texture2D
+@export var body_svg_path: String = ""

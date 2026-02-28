@@ -8,7 +8,7 @@ signal start_match_requested(selected_skin: Resource)
 @onready var difficulty_value_label: Label = $Margin/Rows/DifficultyValue
 @onready var enemies_value_label: Label = $Margin/Rows/EnemiesValue
 @onready var message_value_label: Label = $Margin/Rows/MessageValue
-@onready var leaderboard_value_label: Label = $Margin/Rows/LeaderboardValue
+@onready var leaderboard_value_label: Label = $LeaderboardMargin/Rows/LeaderboardValue
 @onready var pre_match_panel: PanelContainer = $PreMatchPanel
 @onready var skin_select: OptionButton = $PreMatchPanel/Margin/VBox/SkinSelect
 @onready var start_button: Button = $PreMatchPanel/Margin/VBox/StartButton
@@ -161,7 +161,7 @@ func _apply_hud_text_colors() -> void:
 		"Margin/Rows/DifficultyLabel",
 		"Margin/Rows/EnemiesLabel",
 		"Margin/Rows/MessageLabel",
-		"Margin/Rows/LeaderboardLabel",
+		"LeaderboardMargin/Rows/LeaderboardLabel",
 		"PreMatchPanel/Margin/VBox/Title",
 		"PreMatchPanel/Margin/VBox/SkinLabel",
 	])
@@ -172,7 +172,7 @@ func _apply_hud_text_colors() -> void:
 		"Margin/Rows/DifficultyValue",
 		"Margin/Rows/EnemiesValue",
 		"Margin/Rows/MessageValue",
-		"Margin/Rows/LeaderboardValue",
+		"LeaderboardMargin/Rows/LeaderboardValue",
 	])
 
 	for path: String in label_paths:

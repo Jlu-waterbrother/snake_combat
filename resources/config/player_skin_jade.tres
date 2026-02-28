@@ -13,3 +13,4 @@ body_width_scale = 0.94
 head_texture = ExtResource("2")
 head_svg_path = "res://resources/textures/skins/head_jade.svg"
 body_texture = ExtResource("3")
+body_svg_path = "res://resources/textures/skins/body_segmented_scales.svg"

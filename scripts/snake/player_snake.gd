@@ -27,6 +27,7 @@ enum ControlMode {
 @export var initial_heading: Vector2 = Vector2.RIGHT
 @export var rotate_head_texture_with_heading: bool = true
 @export var head_svg_render_scale: float = 2.0
+@export var body_svg_render_scale: float = 1.5
 @export var head_radius: float = 10.0
 @export var head_color: Color = Color(0.22, 0.84, 0.31)
 @export var self_collision_radius: float = 9.0
@@ -55,7 +56,7 @@ var _skin_head_texture: Texture2D
 var _skin_body_texture: Texture2D
 var _head_sprite: Sprite2D
 
-static var _svg_head_texture_cache: Dictionary = {}
+static var _svg_texture_cache: Dictionary = {}
 
 func _ready() -> void:
 	_heading = initial_heading.normalized()
@@ -238,6 +239,7 @@ func _apply_skin() -> void:
 	var next_head_texture: Texture2D = null
 	var next_body_texture: Texture2D = null
 	var next_head_svg_path: String = ""
+	var next_body_svg_path: String = ""
 
 	if skin != null:
 		next_head_color = _skin_color("head_color", _skin_head_color)
@@ -247,10 +249,15 @@ func _apply_skin() -> void:
 		next_head_texture = _skin_texture("head_texture")
 		next_body_texture = _skin_texture("body_texture")
 		next_head_svg_path = _skin_string("head_svg_path", "")
+		next_body_svg_path = _skin_string("body_svg_path", "")
 		if not next_head_svg_path.is_empty():
-			var svg_head_texture: Texture2D = _load_head_texture_from_svg(next_head_svg_path)
+			var svg_head_texture: Texture2D = _load_texture_from_svg(next_head_svg_path, head_svg_render_scale)
 			if svg_head_texture != null:
 				next_head_texture = svg_head_texture
+		if not next_body_svg_path.is_empty():
+			var svg_body_texture: Texture2D = _load_texture_from_svg(next_body_svg_path, body_svg_render_scale)
+			if svg_body_texture != null:
+				next_body_texture = svg_body_texture
 
 	_skin_head_color = next_head_color
 	_skin_body_color = next_body_color
@@ -446,30 +453,31 @@ func _skin_string(property_name: String, fallback: String) -> String:
 		return String(value)
 	return fallback
 
-func _load_head_texture_from_svg(svg_path: String) -> Texture2D:
+func _load_texture_from_svg(svg_path: String, render_scale: float) -> Texture2D:
 	if svg_path.is_empty():
 		return null
 
-	var cached_value: Variant = _svg_head_texture_cache.get(svg_path, null)
+	var cache_key: String = "%s@%.2f" % [svg_path, render_scale]
+	var cached_value: Variant = _svg_texture_cache.get(cache_key, null)
 	if cached_value is Texture2D:
 		return cached_value as Texture2D
 
 	if not FileAccess.file_exists(svg_path):
-		push_warning("Snake head SVG path does not exist: %s" % svg_path)
+		push_warning("Snake SVG path does not exist: %s" % svg_path)
 		return null
 
 	var svg_file: FileAccess = FileAccess.open(svg_path, FileAccess.READ)
 	if svg_file == null:
-		push_warning("Unable to open snake head SVG: %s" % svg_path)
+		push_warning("Unable to open snake SVG: %s" % svg_path)
 		return null
 
 	var svg_text: String = svg_file.get_as_text()
 	var image: Image = Image.new()
-	var parse_error: Error = image.load_svg_from_string(svg_text, max(head_svg_render_scale, 0.1))
+	var parse_error: Error = image.load_svg_from_string(svg_text, max(render_scale, 0.1))
 	if parse_error != OK:
-		push_warning("Unable to parse snake head SVG: %s" % svg_path)
+		push_warning("Unable to parse snake SVG: %s" % svg_path)
 		return null
 
 	var generated_texture: ImageTexture = ImageTexture.create_from_image(image)
-	_svg_head_texture_cache[svg_path] = generated_texture
+	_svg_texture_cache[cache_key] = generated_texture
 	return generated_texture

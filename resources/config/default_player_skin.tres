@@ -13,3 +13,4 @@ body_width_scale = 0.92
 head_texture = ExtResource("2")
 head_svg_path = "res://resources/textures/skins/head_azure.svg"
 body_texture = ExtResource("3")
+body_svg_path = "res://resources/textures/skins/body_segmented_scales.svg"

@@ -6,6 +6,7 @@
   <ellipse cx="126" cy="103" rx="11" ry="13" fill="#14281a"/>
   <circle cx="70" cy="98" r="3" fill="#f8fffa"/>
   <circle cx="130" cy="98" r="3" fill="#f8fffa"/>
-  <path d="M68 137 C81 147, 111 147, 124 137" fill="none" stroke="#1e3524" stroke-width="7" stroke-linecap="round"/>
-  <rect x="92" y="138" width="8" height="16" rx="4" fill="#b4f0c1"/>
+  <path d="M72 137 L120 137" fill="none" stroke="#1e3524" stroke-width="6" stroke-linecap="round"/>
+  <path d="M90 136 L88 146" fill="none" stroke="#b4f0c1" stroke-width="3" stroke-linecap="round"/>
+  <path d="M102 136 L104 146" fill="none" stroke="#b4f0c1" stroke-width="3" stroke-linecap="round"/>
 </svg>
