@@ -11,7 +11,6 @@ var _is_paused: bool = false
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_enforce_mobile_landscape_orientation()
-	_install_mobile_web_orientation_adapt()
 	hud.bind_world(world)
 	hud.start_match_requested.connect(_on_start_match_requested)
 	_configure_pre_match_skin_selection()
@@ -23,53 +22,6 @@ func _enforce_mobile_landscape_orientation() -> void:
 	if os_name != "Android" and os_name != "iOS":
 		return
 	DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE)
-
-func _install_mobile_web_orientation_adapt() -> void:
-	if OS.get_name() != "Web":
-		return
-	if not _is_touch_controls_environment():
-		return
-	JavaScriptBridge.eval(
-		"""(function () {
-			if (window.__snakeCombatOrientationAdaptInstalled) {
-				return;
-			}
-			window.__snakeCombatOrientationAdaptInstalled = true;
-			const syncViewport = () => {
-				const vv = window.visualViewport;
-				const width = Math.round(vv ? vv.width : window.innerWidth);
-				const height = Math.round(vv ? vv.height : window.innerHeight);
-				const canvas = document.getElementById('canvas');
-				if (canvas) {
-					canvas.style.width = width + 'px';
-					canvas.style.height = height + 'px';
-				}
-				window.dispatchEvent(new Event('resize'));
-			};
-			const tryEnableOrientationAuto = async () => {
-				try {
-					if (screen.orientation && screen.orientation.lock) {
-						await screen.orientation.lock('any');
-					}
-				} catch (_err) {}
-				syncViewport();
-			};
-			window.addEventListener('resize', syncViewport, { passive: true });
-			window.addEventListener('orientationchange', syncViewport, { passive: true });
-			if (window.visualViewport) {
-				window.visualViewport.addEventListener('resize', syncViewport, { passive: true });
-			}
-			document.addEventListener('touchstart', tryEnableOrientationAuto, { passive: true });
-			document.addEventListener('pointerdown', tryEnableOrientationAuto, { passive: true });
-			document.addEventListener('visibilitychange', function () {
-				if (!document.hidden) {
-					syncViewport();
-				}
-			});
-			syncViewport();
-		}());""",
-		true
-	)
 
 func _is_touch_controls_environment() -> bool:
 	if DisplayServer.is_touchscreen_available():
