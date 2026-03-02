@@ -27,6 +27,7 @@ signal leaderboard_changed(entries: Array[Dictionary])
 @export var boundary_warning_band: float = 180.0
 @export var player_lives: int = 3
 @export var difficulty_tick_interval: float = 0.5
+@export var respawn_retry_interval: float = 0.3
 
 @onready var snake_manager := $SnakeManager
 @onready var food_manager := $FoodManager
@@ -44,6 +45,8 @@ var _base_camera_follow_lerp_speed: float = 8.0
 var _pre_pause_state: StringName = &"running"
 var _last_leaderboard_signature: String = ""
 var _player_mouse_controls_enabled: bool = true
+var _current_match_state: StringName = &"stopped"
+var _respawn_retry_queued: bool = false
 
 func _ready() -> void:
 	snake_manager.snake_spawned.connect(_on_snake_spawned)
@@ -123,6 +126,7 @@ func start_match() -> void:
 
 	_difficulty_level = 0
 	_difficulty_check_cooldown = 0.0
+	_respawn_retry_queued = false
 	snake_manager.set_target_enemy_count(_base_enemy_count)
 	snake_manager.set_ai_difficulty_scalars(1.0, 1.0)
 	difficulty_changed.emit(_difficulty_level, _base_enemy_count)
@@ -140,6 +144,7 @@ func start_match() -> void:
 
 func stop_match() -> void:
 	_camera_target_snake_id = &""
+	_respawn_retry_queued = false
 	_set_match_state(&"stopped")
 	_emit_leaderboard_if_changed()
 
@@ -250,7 +255,7 @@ func _on_snake_died(snake_id: StringName, reason: StringName) -> void:
 			_set_match_state(&"ended")
 			return
 		_set_match_state(&"respawning")
-		call_deferred("_respawn_player")
+		_queue_player_respawn_retry(0.0)
 
 func _on_snake_mass_dropped(world_position: Vector2, amount: int, bypass_food_cap: bool, drop_kind: StringName, drop_color: Color) -> void:
 	var split_into_units: bool = drop_kind != &"defeat"
@@ -266,6 +271,7 @@ func _on_enemy_state_changed(snake_id: StringName, state: StringName) -> void:
 	enemy_state_changed.emit(snake_id, state)
 
 func _set_match_state(state: StringName) -> void:
+	_current_match_state = state
 	if state != &"paused":
 		_pre_pause_state = state
 	match_state_changed.emit(state)
@@ -273,10 +279,31 @@ func _set_match_state(state: StringName) -> void:
 	if game_state != null:
 		game_state.set_match_state(state)
 
+func _queue_player_respawn_retry(delay_seconds: float) -> void:
+	if _respawn_retry_queued:
+		return
+	_respawn_retry_queued = true
+	var delay: float = max(delay_seconds, 0.0)
+	if delay <= 0.0:
+		call_deferred("_attempt_player_respawn")
+		return
+	var timer: SceneTreeTimer = get_tree().create_timer(delay)
+	timer.timeout.connect(_attempt_player_respawn)
+
+func _attempt_player_respawn() -> void:
+	_respawn_retry_queued = false
+	if _remaining_lives <= 0:
+		return
+	if _current_match_state != &"respawning":
+		return
+	if snake_manager.has_snake(&"player"):
+		return
+	_respawn_player()
+
 func _respawn_player() -> void:
 	var player_snake_id: StringName = snake_manager.spawn_player_snake()
 	if player_snake_id == &"":
-		_set_match_state(&"ended")
+		_queue_player_respawn_retry(max(respawn_retry_interval, 0.05))
 		return
 
 	_camera_target_snake_id = player_snake_id
