@@ -79,10 +79,7 @@ func configure_pre_match_controls(prefer_mouse: bool = true) -> void:
 	_control_uses_mouse.clear()
 	control_select.clear()
 
-	var os_name: String = OS.get_name()
-	var has_touchscreen: bool = DisplayServer.is_touchscreen_available()
-	var force_touch_controls: bool = os_name == "Android" or os_name == "iOS" or (os_name == "Web" and has_touchscreen)
-	if force_touch_controls:
+	if _is_touch_controls_environment():
 		control_select.add_item("Touch")
 		_control_uses_mouse.append(false)
 		control_select.disabled = true
@@ -227,3 +224,18 @@ func _set_control_font_colors(control: Control, base_color: Color) -> void:
 	control.add_theme_color_override("font_pressed_color", base_color.darkened(0.12))
 	control.add_theme_color_override("font_focus_color", base_color)
 	control.add_theme_color_override("font_disabled_color", base_color.darkened(0.35))
+
+func _is_touch_controls_environment() -> bool:
+	if DisplayServer.is_touchscreen_available():
+		return true
+	if OS.has_feature("mobile"):
+		return true
+	if OS.get_name() != "Web":
+		return false
+	var web_touch_value: Variant = JavaScriptBridge.eval(
+		"('ontouchstart' in window) || ((navigator.maxTouchPoints || 0) > 0) || ((window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || false)",
+		true
+	)
+	if web_touch_value is bool:
+		return web_touch_value
+	return false

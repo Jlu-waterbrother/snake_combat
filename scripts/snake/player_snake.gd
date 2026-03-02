@@ -94,6 +94,8 @@ func _draw() -> void:
 func _physics_process(delta: float) -> void:
 	if _is_dead:
 		return
+	if get_tree().paused:
+		return
 
 	var base_speed_raw: float = _config_number("base_speed", default_base_speed)
 	var boost_speed_raw: float = _config_number("boost_speed", default_boost_speed)
@@ -246,10 +248,25 @@ func _can_boost(wants_boost: bool) -> bool:
 func _uses_desktop_mouse_controls() -> bool:
 	if not enable_desktop_mouse_controls:
 		return false
-	if DisplayServer.is_touchscreen_available():
+	if _is_touch_controls_environment():
 		return false
 	var os_name: String = OS.get_name()
 	return os_name != "Android" and os_name != "iOS"
+
+func _is_touch_controls_environment() -> bool:
+	if DisplayServer.is_touchscreen_available():
+		return true
+	if OS.has_feature("mobile"):
+		return true
+	if OS.get_name() != "Web":
+		return false
+	var web_touch_value: Variant = JavaScriptBridge.eval(
+		"('ontouchstart' in window) || ((navigator.maxTouchPoints || 0) > 0) || ((window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || false)",
+		true
+	)
+	if web_touch_value is bool:
+		return web_touch_value
+	return false
 
 func _coiling_contraction_factor(turn_amount: float) -> float:
 	var threshold: float = clamp(coiling_turn_threshold, 0.0, 0.99)

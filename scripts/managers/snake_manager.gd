@@ -80,6 +80,8 @@ func _ready() -> void:
 	_rng.randomize()
 
 func _physics_process(delta: float) -> void:
+	if get_tree().paused:
+		return
 	_update_invincibility(delta)
 	_update_enemy_ai(delta)
 	_check_world_bounds()

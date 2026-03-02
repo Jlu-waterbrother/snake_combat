@@ -11,14 +11,67 @@ var _is_paused: bool = false
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_enforce_mobile_landscape_orientation()
+	_install_mobile_web_landscape_lock()
 	hud.bind_world(world)
 	hud.start_match_requested.connect(_on_start_match_requested)
 	_configure_pre_match_skin_selection()
 
 func _enforce_mobile_landscape_orientation() -> void:
-	if not DisplayServer.is_touchscreen_available():
+	if not _is_touch_controls_environment():
+		return
+	var os_name: String = OS.get_name()
+	if os_name != "Android" and os_name != "iOS":
 		return
 	DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE)
+
+func _install_mobile_web_landscape_lock() -> void:
+	if OS.get_name() != "Web":
+		return
+	if not _is_touch_controls_environment():
+		return
+	JavaScriptBridge.eval(
+		"""(function () {
+			if (window.__snakeCombatLandscapeHookInstalled) {
+				return;
+			}
+			window.__snakeCombatLandscapeHookInstalled = true;
+			const tryLockLandscape = async () => {
+				try {
+					if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+						await document.documentElement.requestFullscreen();
+					}
+				} catch (_err) {}
+				try {
+					if (screen.orientation && screen.orientation.lock) {
+						await screen.orientation.lock('landscape');
+					}
+				} catch (_err) {}
+			};
+			document.addEventListener('touchstart', tryLockLandscape, { passive: true });
+			document.addEventListener('pointerdown', tryLockLandscape, { passive: true });
+			document.addEventListener('visibilitychange', function () {
+				if (!document.hidden) {
+					tryLockLandscape();
+				}
+			});
+		}());""",
+		true
+	)
+
+func _is_touch_controls_environment() -> bool:
+	if DisplayServer.is_touchscreen_available():
+		return true
+	if OS.has_feature("mobile"):
+		return true
+	if OS.get_name() != "Web":
+		return false
+	var web_touch_value: Variant = JavaScriptBridge.eval(
+		"('ontouchstart' in window) || ((navigator.maxTouchPoints || 0) > 0) || ((window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || false)",
+		true
+	)
+	if web_touch_value is bool:
+		return web_touch_value
+	return false
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("pause"):
@@ -26,6 +79,10 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _toggle_pause() -> void:
 	_is_paused = not _is_paused
+	if _is_paused:
+		Input.action_release("turn_left")
+		Input.action_release("turn_right")
+		Input.action_release("boost")
 	world.set_pause_state(_is_paused)
 	get_tree().paused = _is_paused
 

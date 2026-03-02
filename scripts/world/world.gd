@@ -107,6 +107,8 @@ func _draw() -> void:
 	draw_arc(Vector2.ZERO, warning_radius, 0.0, TAU, 256, boundary_inner_color, max(line_width * 0.5, 2.0), true)
 
 func _physics_process(delta: float) -> void:
+	if get_tree().paused:
+		return
 	_update_dynamic_difficulty(delta)
 	_emit_leaderboard_if_changed()
 
