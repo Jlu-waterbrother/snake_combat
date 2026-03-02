@@ -72,6 +72,7 @@ var _boost_scale: float = 1.0
 var _shed_length_remainder: Dictionary[StringName, float] = {}
 var _invincibility_remaining: Dictionary[StringName, float] = {}
 var _snake_display_names: Dictionary[StringName, String] = {}
+var _player_mouse_controls_enabled: bool = true
 
 func _ready() -> void:
 	_rng.randomize()
@@ -121,6 +122,14 @@ func set_food_manager(food_manager: Node2D) -> void:
 
 func set_world_radius(radius: float) -> void:
 	world_radius = max(radius, 200.0)
+
+func set_player_mouse_controls_enabled(enabled: bool) -> void:
+	_player_mouse_controls_enabled = enabled
+	if _player_snake_id == &"" or not _snake_nodes.has(_player_snake_id):
+		return
+	var player_node: Node2D = _snake_nodes[_player_snake_id]
+	if player_node.has_method("set_desktop_mouse_controls_enabled"):
+		player_node.call("set_desktop_mouse_controls_enabled", _player_mouse_controls_enabled)
 
 func set_ai_difficulty_scalars(aggression_scale: float, boost_scale: float) -> void:
 	_aggression_scale = clamp(aggression_scale, 0.5, 2.0)
@@ -299,6 +308,8 @@ func _spawn_snake(snake_id: StringName, snake_scene: PackedScene, spawn_position
 		snake_node.call("set_snake_id", snake_id)
 	if snake_node.has_method("set_control_mode"):
 		snake_node.call("set_control_mode", 1 if is_enemy else 0)
+	if not is_enemy and snake_node.has_method("set_desktop_mouse_controls_enabled"):
+		snake_node.call("set_desktop_mouse_controls_enabled", _player_mouse_controls_enabled)
 	if snake_node.has_method("set_head_color") and is_enemy and not applied_skin:
 		snake_node.call("set_head_color", Color(0.97, 0.27, 0.31))
 	if snake_node.has_signal("snake_died"):

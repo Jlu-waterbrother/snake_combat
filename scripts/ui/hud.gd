@@ -1,6 +1,6 @@
 extends CanvasLayer
 
-signal start_match_requested(selected_skin: Resource)
+signal start_match_requested(selected_skin: Resource, use_mouse_controls: bool)
 
 @onready var state_value_label: Label = $Margin/Rows/StateValue
 @onready var score_value_label: Label = $Margin/Rows/ScoreValue
@@ -11,6 +11,7 @@ signal start_match_requested(selected_skin: Resource)
 @onready var leaderboard_value_label: Label = $LeaderboardMargin/Rows/LeaderboardValue
 @onready var pre_match_panel: PanelContainer = $PreMatchPanel
 @onready var skin_select: OptionButton = $PreMatchPanel/Margin/VBox/SkinSelect
+@onready var control_select: OptionButton = $PreMatchPanel/Margin/VBox/ControlSelect
 @onready var start_button: Button = $PreMatchPanel/Margin/VBox/StartButton
 
 @export var hud_label_text_color: Color = Color(0.11, 0.21, 0.31, 1.0)
@@ -18,9 +19,11 @@ signal start_match_requested(selected_skin: Resource)
 
 var _enemy_count: int = 0
 var _skin_options: Array[Resource] = []
+var _control_uses_mouse: Array[bool] = []
 
 func _ready() -> void:
 	start_button.pressed.connect(_on_start_button_pressed)
+	configure_pre_match_controls(true)
 	_apply_hud_text_colors()
 	pre_match_panel.visible = true
 
@@ -72,6 +75,25 @@ func configure_pre_match_skins(skins: Array[Resource], skin_names: PackedStringA
 			selected_index = found_index
 	skin_select.select(selected_index)
 
+func configure_pre_match_controls(prefer_mouse: bool = true) -> void:
+	_control_uses_mouse.clear()
+	control_select.clear()
+
+	var os_name: String = OS.get_name()
+	if os_name == "Android" or os_name == "iOS":
+		control_select.add_item("Touch")
+		_control_uses_mouse.append(false)
+		control_select.disabled = true
+		control_select.select(0)
+		return
+
+	control_select.add_item("Keyboard")
+	_control_uses_mouse.append(false)
+	control_select.add_item("Mouse")
+	_control_uses_mouse.append(true)
+	control_select.disabled = false
+	control_select.select(1 if prefer_mouse else 0)
+
 func _on_match_state_changed(state: StringName) -> void:
 	state_value_label.text = String(state)
 	if state == &"running":
@@ -85,7 +107,7 @@ func _on_match_state_changed(state: StringName) -> void:
 		pre_match_panel.visible = true
 		start_button.disabled = false
 	elif state == &"stopped" or state == &"boot":
-		message_value_label.text = "Select skin and start"
+		message_value_label.text = "Select skin/control and start"
 		pre_match_panel.visible = true
 		start_button.disabled = false
 	else:
@@ -151,7 +173,12 @@ func _on_start_button_pressed() -> void:
 		var selected_index: int = clampi(skin_select.selected, 0, _skin_options.size() - 1)
 		selected_skin = _skin_options[selected_index]
 
-	start_match_requested.emit(selected_skin)
+	var use_mouse_controls: bool = true
+	if not _control_uses_mouse.is_empty():
+		var control_index: int = clampi(control_select.selected, 0, _control_uses_mouse.size() - 1)
+		use_mouse_controls = _control_uses_mouse[control_index]
+
+	start_match_requested.emit(selected_skin, use_mouse_controls)
 
 func _apply_hud_text_colors() -> void:
 	var label_paths: PackedStringArray = PackedStringArray([
@@ -164,6 +191,7 @@ func _apply_hud_text_colors() -> void:
 		"LeaderboardMargin/Rows/LeaderboardLabel",
 		"PreMatchPanel/Margin/VBox/Title",
 		"PreMatchPanel/Margin/VBox/SkinLabel",
+		"PreMatchPanel/Margin/VBox/ControlLabel",
 	])
 	var value_paths: PackedStringArray = PackedStringArray([
 		"Margin/Rows/StateValue",
@@ -187,6 +215,7 @@ func _apply_hud_text_colors() -> void:
 
 	_set_control_font_colors(start_button, hud_value_text_color)
 	_set_control_font_colors(skin_select, hud_value_text_color)
+	_set_control_font_colors(control_select, hud_value_text_color)
 
 func _set_control_font_colors(control: Control, base_color: Color) -> void:
 	if control == null:

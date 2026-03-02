@@ -142,6 +142,9 @@ func set_ai_command(turn_input: float, boosting: bool) -> void:
 	_ai_turn_input = clamp(turn_input, -1.0, 1.0)
 	_ai_boosting = boosting
 
+func set_desktop_mouse_controls_enabled(enabled: bool) -> void:
+	enable_desktop_mouse_controls = enabled
+
 func set_snake_id(new_snake_id: StringName) -> void:
 	snake_id = new_snake_id
 	var head := get_node_or_null("HeadArea") as Area2D

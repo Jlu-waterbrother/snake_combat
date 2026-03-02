@@ -43,6 +43,7 @@ var _max_difficulty_level: int = 5
 var _base_camera_follow_lerp_speed: float = 8.0
 var _pre_pause_state: StringName = &"running"
 var _last_leaderboard_signature: String = ""
+var _player_mouse_controls_enabled: bool = true
 
 func _ready() -> void:
 	snake_manager.snake_spawned.connect(_on_snake_spawned)
@@ -56,6 +57,8 @@ func _ready() -> void:
 	snake_manager.set_ai_config(ai_config)
 	snake_manager.set_food_manager(food_manager)
 	snake_manager.set_world_radius(world_radius)
+	if snake_manager.has_method("set_player_mouse_controls_enabled"):
+		snake_manager.call("set_player_mouse_controls_enabled", _player_mouse_controls_enabled)
 
 	if ai_config != null:
 		_base_enemy_count = int(max(ai_config.enemy_count, 0))
@@ -159,6 +162,14 @@ func get_player_skin() -> Resource:
 	if snake_manager == null:
 		return null
 	return snake_manager.player_skin
+
+func set_player_mouse_controls_enabled(enabled: bool) -> void:
+	_player_mouse_controls_enabled = enabled
+	if snake_manager != null and snake_manager.has_method("set_player_mouse_controls_enabled"):
+		snake_manager.call("set_player_mouse_controls_enabled", _player_mouse_controls_enabled)
+
+func get_player_mouse_controls_enabled() -> bool:
+	return _player_mouse_controls_enabled
 
 func _update_dynamic_difficulty(delta: float) -> void:
 	if _camera_target_snake_id == &"":

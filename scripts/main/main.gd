@@ -44,7 +44,17 @@ func _configure_pre_match_skin_selection() -> void:
 
 	hud.call("configure_pre_match_skins", skin_options, available_player_skin_names, current_skin)
 
-func _on_start_match_requested(selected_skin: Resource) -> void:
+	var prefers_mouse_controls: bool = true
+	if world.has_method("get_player_mouse_controls_enabled"):
+		var mouse_control_value: Variant = world.call("get_player_mouse_controls_enabled")
+		if mouse_control_value is bool:
+			prefers_mouse_controls = mouse_control_value
+	if hud.has_method("configure_pre_match_controls"):
+		hud.call("configure_pre_match_controls", prefers_mouse_controls)
+
+func _on_start_match_requested(selected_skin: Resource, use_mouse_controls: bool) -> void:
+	if world.has_method("set_player_mouse_controls_enabled"):
+		world.call("set_player_mouse_controls_enabled", use_mouse_controls)
 	if selected_skin != null and world.has_method("set_player_skin"):
 		world.call("set_player_skin", selected_skin)
 	world.start_match()
