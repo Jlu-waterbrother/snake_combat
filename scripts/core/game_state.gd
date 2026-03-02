@@ -11,6 +11,10 @@ func _ready() -> void:
 	_ensure_input_action(&"turn_right", KEY_D)
 	_ensure_input_action(&"boost", KEY_SHIFT)
 	_ensure_input_action(&"pause", KEY_ESCAPE)
+	_ensure_input_action_presence(&"aim_left")
+	_ensure_input_action_presence(&"aim_right")
+	_ensure_input_action_presence(&"aim_up")
+	_ensure_input_action_presence(&"aim_down")
 
 func register_snake(snake_id: StringName) -> void:
 	if _scores.has(snake_id):
@@ -52,3 +56,8 @@ func _ensure_input_action(action: StringName, key_code: int) -> void:
 	var key_event: InputEventKey = InputEventKey.new()
 	key_event.keycode = key_code
 	InputMap.action_add_event(action, key_event)
+
+func _ensure_input_action_presence(action: StringName) -> void:
+	if InputMap.has_action(action):
+		return
+	InputMap.add_action(action)

@@ -214,6 +214,14 @@ func _read_turn_input() -> float:
 	if control_mode == ControlMode.AI:
 		return _ai_turn_input
 
+	var aim_direction: Vector2 = _read_mobile_aim_direction()
+	if aim_direction != Vector2.ZERO:
+		var aim_turn_scale: float = max(mouse_turn_responsiveness, 0.0)
+		var aim_turn: float = clamp(_heading.cross(aim_direction) * aim_turn_scale, -1.0, 1.0)
+		if abs(aim_turn) <= max(mouse_turn_deadzone, 0.0):
+			return 0.0
+		return aim_turn
+
 	var keyboard_turn: float = Input.get_axis("turn_left", "turn_right")
 	if not _uses_desktop_mouse_controls():
 		return keyboard_turn
@@ -228,6 +236,15 @@ func _read_turn_input() -> float:
 	if abs(mouse_turn) <= max(mouse_turn_deadzone, 0.0):
 		return keyboard_turn
 	return mouse_turn
+
+func _read_mobile_aim_direction() -> Vector2:
+	var aim_x: float = Input.get_axis("aim_left", "aim_right")
+	var aim_y: float = Input.get_axis("aim_up", "aim_down")
+	var aim_vector: Vector2 = Vector2(aim_x, aim_y)
+	var deadzone: float = max(mouse_turn_deadzone, 0.08)
+	if aim_vector.length() <= deadzone:
+		return Vector2.ZERO
+	return aim_vector.normalized()
 
 func _wants_boost() -> bool:
 	if control_mode == ControlMode.AI:
@@ -261,7 +278,7 @@ func _is_touch_controls_environment() -> bool:
 	if OS.get_name() != "Web":
 		return false
 	var web_touch_value: Variant = JavaScriptBridge.eval(
-		"('ontouchstart' in window) || ((navigator.maxTouchPoints || 0) > 0) || ((window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || false)",
+		"('ontouchstart' in window) || ((navigator.maxTouchPoints || 0) > 0) || ((window.matchMedia && (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches)) || false) || (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || ''))",
 		true
 	)
 	if web_touch_value is bool:

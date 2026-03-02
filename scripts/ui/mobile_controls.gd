@@ -9,11 +9,13 @@ extends CanvasLayer
 
 var _joystick_touch_id: int = -1
 var _boost_touch_id: int = -1
-var _turn_input: float = 0.0
+var _aim_input: Vector2 = Vector2.ZERO
 var _boosting: bool = false
 var _controls_enabled: bool = false
-var _pressed_left: bool = false
-var _pressed_right: bool = false
+var _pressed_aim_left: bool = false
+var _pressed_aim_right: bool = false
+var _pressed_aim_up: bool = false
+var _pressed_aim_down: bool = false
 var _pressed_boost: bool = false
 var _mouse_joystick_active: bool = false
 var _mouse_boost_active: bool = false
@@ -42,7 +44,7 @@ func _physics_process(_delta: float) -> void:
 	if not _controls_enabled:
 		return
 	if get_tree().paused:
-		_turn_input = 0.0
+		_aim_input = Vector2.ZERO
 		_boosting = false
 	_apply_actions()
 
@@ -62,7 +64,7 @@ func _handle_screen_touch(event: InputEventScreenTouch) -> void:
 
 	if event.index == _joystick_touch_id:
 		_joystick_touch_id = -1
-		_turn_input = 0.0
+		_aim_input = Vector2.ZERO
 		_reset_knob()
 
 	if event.index == _boost_touch_id:
@@ -93,7 +95,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 
 	if _mouse_joystick_active:
 		_mouse_joystick_active = false
-		_turn_input = 0.0
+		_aim_input = Vector2.ZERO
 		_reset_knob()
 	if _mouse_boost_active:
 		_mouse_boost_active = false
@@ -109,7 +111,7 @@ func _update_joystick(touch_position: Vector2) -> void:
 	var center: Vector2 = joystick_zone.get_global_rect().get_center()
 	var offset: Vector2 = touch_position - center
 	var clamped_offset: Vector2 = offset.limit_length(joystick_radius)
-	_turn_input = clamp(clamped_offset.x / joystick_radius, -1.0, 1.0)
+	_aim_input = clamped_offset / max(joystick_radius, 1.0)
 	joystick_knob.global_position = center + clamped_offset - joystick_knob.size * 0.5
 
 func _reset_knob() -> void:
@@ -117,24 +119,41 @@ func _reset_knob() -> void:
 	joystick_knob.global_position = center - joystick_knob.size * 0.5
 
 func _apply_actions() -> void:
-	var wants_left: bool = _turn_input < -deadzone
-	var wants_right: bool = _turn_input > deadzone
-	var left_strength: float = abs(_turn_input)
-	var right_strength: float = _turn_input
+	var x_strength: float = clamp(_aim_input.x, -1.0, 1.0)
+	var y_strength: float = clamp(_aim_input.y, -1.0, 1.0)
+
+	var wants_left: bool = x_strength < -deadzone
+	var wants_right: bool = x_strength > deadzone
+	var wants_up: bool = y_strength < -deadzone
+	var wants_down: bool = y_strength > deadzone
 
 	if wants_left:
-		Input.action_press("turn_left", left_strength)
-		_pressed_left = true
-	elif _pressed_left:
-		Input.action_release("turn_left")
-		_pressed_left = false
+		Input.action_press("aim_left", abs(x_strength))
+		_pressed_aim_left = true
+	elif _pressed_aim_left:
+		Input.action_release("aim_left")
+		_pressed_aim_left = false
 
 	if wants_right:
-		Input.action_press("turn_right", right_strength)
-		_pressed_right = true
-	elif _pressed_right:
-		Input.action_release("turn_right")
-		_pressed_right = false
+		Input.action_press("aim_right", x_strength)
+		_pressed_aim_right = true
+	elif _pressed_aim_right:
+		Input.action_release("aim_right")
+		_pressed_aim_right = false
+
+	if wants_up:
+		Input.action_press("aim_up", abs(y_strength))
+		_pressed_aim_up = true
+	elif _pressed_aim_up:
+		Input.action_release("aim_up")
+		_pressed_aim_up = false
+
+	if wants_down:
+		Input.action_press("aim_down", y_strength)
+		_pressed_aim_down = true
+	elif _pressed_aim_down:
+		Input.action_release("aim_down")
+		_pressed_aim_down = false
 
 	if _boosting:
 		Input.action_press("boost")
@@ -151,7 +170,7 @@ func _is_touch_controls_environment() -> bool:
 	if OS.get_name() != "Web":
 		return false
 	var web_touch_value: Variant = JavaScriptBridge.eval(
-		"('ontouchstart' in window) || ((navigator.maxTouchPoints || 0) > 0) || ((window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || false)",
+		"('ontouchstart' in window) || ((navigator.maxTouchPoints || 0) > 0) || ((window.matchMedia && (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches)) || false) || (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || ''))",
 		true
 	)
 	if web_touch_value is bool:

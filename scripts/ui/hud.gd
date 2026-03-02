@@ -233,7 +233,7 @@ func _is_touch_controls_environment() -> bool:
 	if OS.get_name() != "Web":
 		return false
 	var web_touch_value: Variant = JavaScriptBridge.eval(
-		"('ontouchstart' in window) || ((navigator.maxTouchPoints || 0) > 0) || ((window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || false)",
+		"('ontouchstart' in window) || ((navigator.maxTouchPoints || 0) > 0) || ((window.matchMedia && (window.matchMedia('(pointer: coarse)').matches || window.matchMedia('(hover: none)').matches)) || false) || (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || ''))",
 		true
 	)
 	if web_touch_value is bool:
