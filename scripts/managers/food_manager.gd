@@ -169,7 +169,8 @@ func _activate_food_node(
 	else:
 		food_node.global_position = point
 		food_node.visible = true
-		food_node.monitoring = true
+		food_node.set_deferred("monitoring", true)
+		food_node.set_deferred("monitorable", true)
 
 	_active_food.append(food_node)
 	_track_food_node(food_node)
@@ -285,10 +286,11 @@ func _on_food_consumed(snake_id: StringName, amount: int, food_node: Area2D) -> 
 		food_node.call("deactivate")
 	else:
 		food_node.visible = false
-		food_node.monitoring = false
+		food_node.set_deferred("monitoring", false)
+		food_node.set_deferred("monitorable", false)
 
 	_inactive_food.append(food_node)
 	food_eaten.emit(snake_id, amount)
 
 	if respawn_on_consume and (max_active_food_count <= 0 or _active_food.size() < max_active_food_count):
-		_spawn_food_at_position(_sample_spawn_point(), 1)
+		call_deferred("_spawn_food_at_position", _sample_spawn_point(), 1)
