@@ -1,6 +1,6 @@
 extends CanvasLayer
 
-@export var joystick_radius: float = 76.0
+@export var joystick_radius: float = 114.0
 @export var deadzone: float = 0.18
 
 @onready var joystick_zone: Control = $JoystickZone

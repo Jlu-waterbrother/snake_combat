@@ -16,6 +16,7 @@ signal enemy_state_changed(snake_id: StringName, state: StringName)
 @export var enemy_skins: Array[Resource] = []
 @export var growth_per_food: float = 10.0
 @export var default_drop_food_color: Color = Color(0.99, 0.8, 0.1, 1.0)
+@export var minimum_defeat_drop_food: int = 1
 @export var enemy_spawn_radius_min: float = 420.0
 @export var enemy_spawn_radius_max: float = 980.0
 @export var enemy_spawn_attempts: int = 24
@@ -171,7 +172,11 @@ func kill_snake(snake_id: StringName, reason: StringName) -> void:
 		drop_color = _snake_drop_food_color_from_node(snake_node)
 		if allow_mass_drop:
 			var consumed_food: int = int(_scores.get(snake_id, 0))
-			drop_amount = max(int(floor(float(max(consumed_food, 0)) * 0.5)), 0)
+			if consumed_food > 0:
+				var minimum_drop: int = max(minimum_defeat_drop_food, 1)
+				drop_amount = max(int(floor(float(consumed_food) * 0.5)), minimum_drop)
+			else:
+				drop_amount = 0
 		if allow_mass_drop and snake_node.has_method("get_body_points"):
 			var drop_points_value: Variant = snake_node.call("get_body_points")
 			if drop_points_value is PackedVector2Array:
