@@ -501,22 +501,47 @@ func _retarget_enemy(enemy_id: StringName, enemy_position: Vector2, has_player: 
 	else:
 		var aggression: float = clamp(_ai_float("aggression", 0.45) * _aggression_scale, 0.0, 1.0)
 		var should_chase: bool = false
+		var enemy_heading: Vector2 = Vector2.RIGHT
+		if _snake_nodes.has(enemy_id):
+			var enemy_node: Node2D = _snake_nodes[enemy_id]
+			if enemy_node.has_method("get_heading"):
+				var enemy_heading_value: Variant = enemy_node.call("get_heading")
+				if enemy_heading_value is Vector2 and (enemy_heading_value as Vector2) != Vector2.ZERO:
+					enemy_heading = (enemy_heading_value as Vector2).normalized()
 		if has_player:
-			var player_distance: float = enemy_position.distance_to(player_position)
+			var to_player: Vector2 = player_position - enemy_position
+			var player_distance: float = to_player.length()
 			if player_distance <= vision_radius:
+				var to_player_direction: Vector2 = Vector2.ZERO
+				if player_distance > 0.0:
+					to_player_direction = to_player / player_distance
 				var enemy_length: float = _snake_length(enemy_id)
 				var player_length: float = _snake_length(_player_snake_id)
 				var caution_ratio: float = max(_ai_float("caution_length_ratio", 1.05), 0.3)
 				var avoid_distance: float = max(_ai_float("head_on_avoid_distance", 200.0), 40.0)
 				var is_outmatched: bool = enemy_length < player_length * caution_ratio
-				if is_outmatched and player_distance <= avoid_distance:
+				var enemy_facing_player: bool = to_player_direction != Vector2.ZERO and enemy_heading.dot(to_player_direction) > 0.2
+				var player_facing_enemy: bool = to_player_direction != Vector2.ZERO and player_heading.dot(-to_player_direction) > 0.1
+				var head_on_risk: bool = enemy_facing_player and player_facing_enemy and player_distance <= avoid_distance * 1.35
+				if (is_outmatched and player_distance <= avoid_distance) or (head_on_risk and enemy_length <= player_length * 1.2):
 					state = STATE_AVOID
 					var away_direction: Vector2 = (enemy_position - player_position).normalized()
 					if away_direction == Vector2.ZERO:
 						away_direction = _random_direction()
-					target = enemy_position + away_direction * min(vision_radius, 280.0)
+					if to_player_direction != Vector2.ZERO:
+						var lateral: Vector2 = Vector2(-to_player_direction.y, to_player_direction.x)
+						var side_sign: float = -1.0 if abs(String(enemy_id).hash()) % 2 == 0 else 1.0
+						away_direction = (away_direction + lateral * side_sign * 0.65).normalized()
+						if away_direction == Vector2.ZERO:
+							away_direction = _random_direction()
+					target = enemy_position + away_direction * min(vision_radius, 320.0)
 				else:
-					should_chase = _rng.randf() <= aggression
+					var chase_probability: float = aggression
+					if player_distance < avoid_distance * 1.1:
+						chase_probability *= 0.4
+					if enemy_length < player_length:
+						chase_probability *= 0.6
+					should_chase = _rng.randf() <= chase_probability
 
 		if state != STATE_AVOID and should_chase and has_player:
 			state = STATE_CHASE
@@ -564,6 +589,7 @@ func _apply_enemy_steering(enemy_id: StringName, enemy_node: Node2D, target_posi
 	var state: StringName = _enemy_states.get(enemy_id, STATE_PATROL)
 	var boost_probability: float = clamp(_ai_float("boost_probability", 0.12) * _boost_scale, 0.0, 1.0)
 	var wants_boost: bool = false
+	var has_player: bool = _player_snake_id != &"" and _snake_nodes.has(_player_snake_id)
 	if abs(hazard_avoid_turn) > 0.001:
 		wants_boost = false
 		if state != STATE_AVOID:
@@ -576,6 +602,15 @@ func _apply_enemy_steering(enemy_id: StringName, enemy_node: Node2D, target_posi
 		wants_boost = _rng.randf() <= boost_probability * 0.2
 	elif state == STATE_SEEK:
 		wants_boost = _rng.randf() <= boost_probability * 0.4
+
+	if wants_boost and has_player:
+		var player_node: Node2D = _snake_nodes[_player_snake_id]
+		var player_distance: float = enemy_node.global_position.distance_to(player_node.global_position)
+		var unsafe_boost_distance: float = max(_ai_float("head_on_avoid_distance", 200.0), 40.0) * 1.15
+		var enemy_length: float = _snake_length(enemy_id)
+		var player_length: float = _snake_length(_player_snake_id)
+		if player_distance <= unsafe_boost_distance and enemy_length <= player_length * 1.15:
+			wants_boost = false
 
 	enemy_node.call("set_ai_command", turn_input, wants_boost)
 

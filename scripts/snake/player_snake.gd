@@ -21,7 +21,7 @@ enum ControlMode {
 @export var max_visual_scale: float = 2.4
 @export var coiling_turn_threshold: float = 0.55
 @export var coiling_shrink_per_second: float = 8.0
-@export var default_turn_rate_deg_per_second: float = 180.0
+@export var default_turn_rate_deg_per_second: float = 220.0
 @export var default_segment_spacing: float = 10.0
 @export var body_length: float = 180.0
 @export var initial_heading: Vector2 = Vector2.RIGHT
@@ -34,6 +34,9 @@ enum ControlMode {
 @export var self_collision_min_body_length: float = 260.0
 @export var self_collision_sample_step: int = 2
 @export var control_mode: ControlMode = ControlMode.PLAYER
+@export var enable_desktop_mouse_controls: bool = true
+@export var mouse_turn_responsiveness: float = 3.0
+@export var mouse_turn_deadzone: float = 0.02
 
 @onready var body_line: Line2D = $BodyLine
 @onready var head_area: Area2D = $HeadArea
@@ -205,12 +208,30 @@ func collides_with_body(point: Vector2, other_radius: float, ignore_points_from_
 func _read_turn_input() -> float:
 	if control_mode == ControlMode.AI:
 		return _ai_turn_input
-	return Input.get_axis("turn_left", "turn_right")
+
+	var keyboard_turn: float = Input.get_axis("turn_left", "turn_right")
+	if not _uses_desktop_mouse_controls():
+		return keyboard_turn
+
+	var to_mouse: Vector2 = get_global_mouse_position() - global_position
+	if to_mouse == Vector2.ZERO:
+		return keyboard_turn
+
+	var desired_direction: Vector2 = to_mouse.normalized()
+	var mouse_turn_scale: float = max(mouse_turn_responsiveness, 0.0)
+	var mouse_turn: float = clamp(_heading.cross(desired_direction) * mouse_turn_scale, -1.0, 1.0)
+	if abs(mouse_turn) <= max(mouse_turn_deadzone, 0.0):
+		return keyboard_turn
+	return mouse_turn
 
 func _wants_boost() -> bool:
 	if control_mode == ControlMode.AI:
 		return _ai_boosting
-	return Input.is_action_pressed("boost")
+
+	var wants_boost: bool = Input.is_action_pressed("boost")
+	if _uses_desktop_mouse_controls() and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		wants_boost = true
+	return wants_boost
 
 func _can_boost(wants_boost: bool) -> bool:
 	if not wants_boost:
@@ -218,6 +239,12 @@ func _can_boost(wants_boost: bool) -> bool:
 	if boost_body_drain_per_second <= 0.0:
 		return false
 	return body_length > max(min_body_length_for_boost, min_body_length)
+
+func _uses_desktop_mouse_controls() -> bool:
+	if not enable_desktop_mouse_controls:
+		return false
+	var os_name: String = OS.get_name()
+	return os_name != "Android" and os_name != "iOS"
 
 func _coiling_contraction_factor(turn_amount: float) -> float:
 	var threshold: float = clamp(coiling_turn_threshold, 0.0, 0.99)
@@ -461,22 +488,22 @@ func _load_texture_from_svg(svg_path: String, render_scale: float) -> Texture2D:
 	if cached_value is Texture2D:
 		return cached_value as Texture2D
 
-	if not FileAccess.file_exists(svg_path):
-		push_warning("Snake SVG path does not exist: %s" % svg_path)
-		return null
+	if FileAccess.file_exists(svg_path):
+		var svg_file: FileAccess = FileAccess.open(svg_path, FileAccess.READ)
+		if svg_file != null:
+			var svg_text: String = svg_file.get_as_text()
+			var image: Image = Image.new()
+			var parse_error: Error = image.load_svg_from_string(svg_text, max(render_scale, 0.1))
+			if parse_error == OK:
+				var generated_texture: ImageTexture = ImageTexture.create_from_image(image)
+				_svg_texture_cache[cache_key] = generated_texture
+				return generated_texture
 
-	var svg_file: FileAccess = FileAccess.open(svg_path, FileAccess.READ)
-	if svg_file == null:
-		push_warning("Unable to open snake SVG: %s" % svg_path)
-		return null
+	var imported_texture_value: Variant = load(svg_path)
+	if imported_texture_value is Texture2D:
+		var imported_texture: Texture2D = imported_texture_value as Texture2D
+		_svg_texture_cache[cache_key] = imported_texture
+		return imported_texture
 
-	var svg_text: String = svg_file.get_as_text()
-	var image: Image = Image.new()
-	var parse_error: Error = image.load_svg_from_string(svg_text, max(render_scale, 0.1))
-	if parse_error != OK:
-		push_warning("Unable to parse snake SVG: %s" % svg_path)
-		return null
-
-	var generated_texture: ImageTexture = ImageTexture.create_from_image(image)
-	_svg_texture_cache[cache_key] = generated_texture
-	return generated_texture
+	push_warning("Unable to load snake SVG texture: %s" % svg_path)
+	return null
