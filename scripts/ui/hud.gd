@@ -80,7 +80,9 @@ func configure_pre_match_controls(prefer_mouse: bool = true) -> void:
 	control_select.clear()
 
 	var os_name: String = OS.get_name()
-	if os_name == "Android" or os_name == "iOS":
+	var has_touchscreen: bool = DisplayServer.is_touchscreen_available()
+	var force_touch_controls: bool = os_name == "Android" or os_name == "iOS" or (os_name == "Web" and has_touchscreen)
+	if force_touch_controls:
 		control_select.add_item("Touch")
 		_control_uses_mouse.append(false)
 		control_select.disabled = true

@@ -246,6 +246,8 @@ func _can_boost(wants_boost: bool) -> bool:
 func _uses_desktop_mouse_controls() -> bool:
 	if not enable_desktop_mouse_controls:
 		return false
+	if DisplayServer.is_touchscreen_available():
+		return false
 	var os_name: String = OS.get_name()
 	return os_name != "Android" and os_name != "iOS"
 
