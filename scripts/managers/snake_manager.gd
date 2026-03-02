@@ -652,7 +652,7 @@ func _retarget_enemy(enemy_id: StringName, enemy_position: Vector2, has_player: 
 		if state != STATE_AVOID and should_chase and has_player:
 			state = STATE_CHASE
 			var predict_seconds: float = clamp(_enemy_ai_float(enemy_id, "chase_predict_seconds", 0.35), 0.0, 1.2)
-			var predicted_position: Vector2 = player_position + player_heading * _movement_float("base_speed", 123.75) * predict_seconds
+			var predicted_position: Vector2 = player_position + player_heading * _movement_float("base_speed", 148.5) * predict_seconds
 			var flank_distance: float = max(_enemy_ai_float(enemy_id, "chase_flank_distance", 90.0), 0.0)
 			if flank_distance > 0.0:
 				var lateral: Vector2 = Vector2(-player_heading.y, player_heading.x)
