@@ -19,6 +19,10 @@ config/icon="res://icon.svg"
 
 GameState="*res://scripts/core/game_state.gd"
 
+[display]
+
+window/handheld/orientation=4
+
 [rendering]
 
 environment/defaults/default_clear_color=Color(0.94, 0.98, 0.95, 1)

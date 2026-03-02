@@ -10,9 +10,15 @@ var _is_paused: bool = false
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	_enforce_mobile_landscape_orientation()
 	hud.bind_world(world)
 	hud.start_match_requested.connect(_on_start_match_requested)
 	_configure_pre_match_skin_selection()
+
+func _enforce_mobile_landscape_orientation() -> void:
+	if not DisplayServer.is_touchscreen_available():
+		return
+	DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("pause"):
