@@ -34,6 +34,7 @@ const STATE_PATROL: StringName = &"patrol"
 const STATE_SEEK: StringName = &"seek"
 const STATE_CHASE: StringName = &"chase"
 const STATE_AVOID: StringName = &"avoid"
+const AI_DIFFICULTY_LEVELS := [3, 4, 5]
 const ENEMY_NAME_POOL := [
 	"Viper",
 	"Cobra",
@@ -64,12 +65,11 @@ var _enemy_targets: Dictionary[StringName, Vector2] = {}
 var _enemy_retarget_cooldown: Dictionary[StringName, float] = {}
 var _enemy_hazard_probe_cooldown: Dictionary[StringName, float] = {}
 var _enemy_hazard_turn_cache: Dictionary[StringName, float] = {}
+var _enemy_difficulty_levels: Dictionary[StringName, int] = {}
 var _player_snake_id: StringName = &""
 var _target_enemy_count: int = 0
 var _next_enemy_index: int = 1
 var _food_manager: Node2D
-var _aggression_scale: float = 1.0
-var _boost_scale: float = 1.0
 var _shed_length_remainder: Dictionary[StringName, float] = {}
 var _invincibility_remaining: Dictionary[StringName, float] = {}
 var _snake_display_names: Dictionary[StringName, String] = {}
@@ -95,7 +95,7 @@ func spawn_player_snake() -> StringName:
 		push_error("player_snake_scene is not assigned on SnakeManager.")
 		return &""
 
-	if not _spawn_snake(snake_id, player_snake_scene, _sample_player_spawn_position(), false):
+	if not _spawn_snake(snake_id, player_snake_scene, _sample_player_spawn_position(), false, 3):
 		return &""
 
 	_player_snake_id = snake_id
@@ -133,9 +133,8 @@ func set_player_mouse_controls_enabled(enabled: bool) -> void:
 	if player_node.has_method("set_desktop_mouse_controls_enabled"):
 		player_node.call("set_desktop_mouse_controls_enabled", _player_mouse_controls_enabled)
 
-func set_ai_difficulty_scalars(aggression_scale: float, boost_scale: float) -> void:
-	_aggression_scale = clamp(aggression_scale, 0.5, 2.0)
-	_boost_scale = clamp(boost_scale, 0.5, 2.0)
+func set_ai_difficulty_scalars(_aggression_scale: float, _boost_scale: float) -> void:
+	pass
 
 func apply_food_gain(snake_id: StringName, amount: int) -> void:
 	if amount <= 0:
@@ -192,6 +191,7 @@ func kill_snake(snake_id: StringName, reason: StringName) -> void:
 		_enemy_retarget_cooldown.erase(snake_id)
 		_enemy_hazard_probe_cooldown.erase(snake_id)
 		_enemy_hazard_turn_cache.erase(snake_id)
+		_enemy_difficulty_levels.erase(snake_id)
 
 	if allow_mass_drop and drop_amount > 0:
 		_emit_mass_drop(drop_points, drop_position, drop_amount, drop_color)
@@ -270,6 +270,7 @@ func _sync_enemy_count() -> void:
 func _spawn_next_enemy() -> void:
 	var enemy_index: int = _next_enemy_index
 	var enemy_id: StringName = StringName("enemy_%d" % enemy_index)
+	var enemy_difficulty_level: int = _pick_enemy_difficulty_level()
 	var enemy_scene: PackedScene = enemy_snake_scene if enemy_snake_scene != null else player_snake_scene
 	if enemy_scene == null:
 		push_error("enemy_snake_scene and fallback player_snake_scene are both null.")
@@ -279,12 +280,13 @@ func _spawn_next_enemy() -> void:
 	if not spawn_position.is_finite():
 		_queue_enemy_spawn_retry()
 		return
-	if not _spawn_snake(enemy_id, enemy_scene, spawn_position, true):
+	if not _spawn_snake(enemy_id, enemy_scene, spawn_position, true, enemy_difficulty_level):
 		_queue_enemy_spawn_retry()
 		return
 
 	_next_enemy_index = enemy_index + 1
 	_enemy_spawn_retry_queued = false
+	_enemy_difficulty_levels[enemy_id] = enemy_difficulty_level
 	_enemy_ids.append(enemy_id)
 	_enemy_states[enemy_id] = STATE_PATROL
 	_enemy_targets[enemy_id] = _snake_nodes[enemy_id].global_position + Vector2.RIGHT * 120.0
@@ -307,7 +309,7 @@ func _retry_enemy_spawn_if_needed() -> void:
 		return
 	_sync_enemy_count()
 
-func _spawn_snake(snake_id: StringName, snake_scene: PackedScene, spawn_position: Vector2, is_enemy: bool) -> bool:
+func _spawn_snake(snake_id: StringName, snake_scene: PackedScene, spawn_position: Vector2, is_enemy: bool, _enemy_difficulty_level: int = 3) -> bool:
 	if not spawn_position.is_finite():
 		return false
 	if not _is_spawn_position_safe(spawn_position, _effective_respawn_clearance_radius()):
@@ -360,6 +362,54 @@ func _pick_enemy_skin() -> Resource:
 
 	var index: int = _rng.randi_range(0, skin_candidates.size() - 1)
 	return skin_candidates[index]
+
+func _pick_enemy_difficulty_level() -> int:
+	if AI_DIFFICULTY_LEVELS.is_empty():
+		return 3
+	var index: int = _rng.randi_range(0, AI_DIFFICULTY_LEVELS.size() - 1)
+	return AI_DIFFICULTY_LEVELS[index]
+
+func _enemy_difficulty_level(enemy_id: StringName) -> int:
+	var level: int = int(_enemy_difficulty_levels.get(enemy_id, 3))
+	return clampi(level, 3, 5)
+
+func _enemy_difficulty_ratio(enemy_id: StringName) -> float:
+	return float(_enemy_difficulty_level(enemy_id) - 3) / 2.0
+
+func _enemy_ai_float(enemy_id: StringName, property_name: String, fallback: float) -> float:
+	var base_value: float = _ai_float(property_name, fallback)
+	var tier_ratio: float = _enemy_difficulty_ratio(enemy_id)
+	match property_name:
+		"vision_radius":
+			return max(base_value * lerpf(1.0, 1.25, tier_ratio), 80.0)
+		"aggression":
+			return clamp(base_value * lerpf(0.82, 1.05, tier_ratio), 0.0, 1.0)
+		"boost_probability":
+			return clamp(base_value * lerpf(0.75, 1.0, tier_ratio), 0.0, 1.0)
+		"avoid_boundary_ratio":
+			return clamp(base_value * lerpf(0.94, 0.84, tier_ratio), 0.5, 0.98)
+		"avoid_boundary_margin":
+			return max(base_value * lerpf(1.18, 1.45, tier_ratio), 40.0)
+		"retarget_interval":
+			return clamp(base_value * lerpf(0.95, 0.65, tier_ratio), 0.04, 0.5)
+		"turn_responsiveness":
+			return max(base_value * lerpf(1.1, 1.45, tier_ratio), 0.5)
+		"hazard_probe_interval":
+			return clamp(base_value * lerpf(0.78, 0.5, tier_ratio), 0.012, 0.25)
+		"hazard_probe_distance":
+			return max(base_value * lerpf(1.25, 1.7, tier_ratio), 40.0)
+		"hazard_probe_angle_deg":
+			return clamp(base_value * lerpf(1.1, 1.3, tier_ratio), 5.0, 88.0)
+		"head_on_avoid_distance":
+			return max(base_value * lerpf(1.2, 1.7, tier_ratio), 40.0)
+		"caution_length_ratio":
+			return max(base_value * lerpf(1.08, 1.28, tier_ratio), 0.3)
+		"chase_predict_seconds":
+			return clamp(base_value * lerpf(0.95, 1.08, tier_ratio), 0.0, 1.3)
+		"chase_flank_distance":
+			return max(base_value * lerpf(0.95, 1.15, tier_ratio), 0.0)
+		_:
+			return base_value
 
 func _sample_enemy_spawn_position() -> Vector2:
 	var min_radius: float = max(enemy_spawn_radius_min, 120.0)
@@ -501,21 +551,22 @@ func _update_enemy_ai(delta: float) -> void:
 		player_heading = _player_heading()
 
 	var retarget_origins: Dictionary = {}
-	var retarget_interval: float = max(_ai_float("retarget_interval", 0.2), 0.05)
+	var max_vision_radius: float = 520.0
 	for enemy_id: StringName in _enemy_ids:
 		if not _snake_nodes.has(enemy_id):
 			continue
 		var enemy_node: Node2D = _snake_nodes[enemy_id]
+		var retarget_interval: float = max(_enemy_ai_float(enemy_id, "retarget_interval", 0.2), 0.04)
 		var cooldown: float = _enemy_retarget_cooldown.get(enemy_id, 0.0) - delta
 		_enemy_retarget_cooldown[enemy_id] = cooldown
 		if cooldown <= 0.0:
 			retarget_origins[enemy_id] = enemy_node.global_position
 			_enemy_retarget_cooldown[enemy_id] = retarget_interval
+			max_vision_radius = max(max_vision_radius, _enemy_ai_float(enemy_id, "vision_radius", 520.0))
 
-	var vision_radius: float = _ai_float("vision_radius", 520.0)
 	var nearest_food_by_enemy: Dictionary = {}
 	if not retarget_origins.is_empty() and _food_manager != null and _food_manager.has_method("get_nearest_food_positions"):
-		var nearest_value: Variant = _food_manager.call("get_nearest_food_positions", retarget_origins, vision_radius)
+		var nearest_value: Variant = _food_manager.call("get_nearest_food_positions", retarget_origins, max_vision_radius)
 		if nearest_value is Dictionary:
 			nearest_food_by_enemy = nearest_value
 
@@ -531,7 +582,8 @@ func _update_enemy_ai(delta: float) -> void:
 			var nearest_food: Vector2 = Vector2.INF
 			if nearest_food_value is Vector2:
 				nearest_food = nearest_food_value
-			_retarget_enemy(enemy_id, enemy_position, has_player, player_position, player_heading, nearest_food, vision_radius)
+			var enemy_vision_radius: float = _enemy_ai_float(enemy_id, "vision_radius", 520.0)
+			_retarget_enemy(enemy_id, enemy_position, has_player, player_position, player_heading, nearest_food, enemy_vision_radius)
 
 		var enemy_node: Node2D = _snake_nodes[enemy_id]
 		var target_position: Vector2 = _enemy_targets.get(enemy_id, enemy_node.global_position + Vector2.RIGHT * 120.0)
@@ -540,13 +592,13 @@ func _update_enemy_ai(delta: float) -> void:
 func _retarget_enemy(enemy_id: StringName, enemy_position: Vector2, has_player: bool, player_position: Vector2, player_heading: Vector2, nearest_food: Vector2, vision_radius: float) -> void:
 	var state: StringName = STATE_PATROL
 	var target: Vector2 = enemy_position + _random_direction() * 240.0
-	var avoid_ratio: float = clamp(_ai_float("avoid_boundary_ratio", 0.8), 0.5, 0.95)
-	var avoid_margin: float = max(_ai_float("avoid_boundary_margin", 220.0), 40.0)
+	var avoid_ratio: float = clamp(_enemy_ai_float(enemy_id, "avoid_boundary_ratio", 0.8), 0.5, 0.95)
+	var avoid_margin: float = max(_enemy_ai_float(enemy_id, "avoid_boundary_margin", 220.0), 40.0)
 	if enemy_position.length() >= world_radius * avoid_ratio or enemy_position.length() >= world_radius - avoid_margin:
 		state = STATE_AVOID
 		target = Vector2.ZERO
 	else:
-		var aggression: float = clamp(_ai_float("aggression", 0.45) * _aggression_scale, 0.0, 1.0)
+		var aggression: float = clamp(_enemy_ai_float(enemy_id, "aggression", 0.45), 0.0, 1.0)
 		var should_chase: bool = false
 		var enemy_heading: Vector2 = Vector2.RIGHT
 		if _snake_nodes.has(enemy_id):
@@ -564,8 +616,8 @@ func _retarget_enemy(enemy_id: StringName, enemy_position: Vector2, has_player: 
 					to_player_direction = to_player / player_distance
 				var enemy_length: float = _snake_length(enemy_id)
 				var player_length: float = _snake_length(_player_snake_id)
-				var caution_ratio: float = max(_ai_float("caution_length_ratio", 1.05), 0.3)
-				var avoid_distance: float = max(_ai_float("head_on_avoid_distance", 200.0), 40.0)
+				var caution_ratio: float = max(_enemy_ai_float(enemy_id, "caution_length_ratio", 1.05), 0.3)
+				var avoid_distance: float = max(_enemy_ai_float(enemy_id, "head_on_avoid_distance", 200.0), 40.0)
 				var is_outmatched: bool = enemy_length < player_length * caution_ratio
 				var enemy_facing_player: bool = to_player_direction != Vector2.ZERO and enemy_heading.dot(to_player_direction) > 0.2
 				var player_facing_enemy: bool = to_player_direction != Vector2.ZERO and player_heading.dot(-to_player_direction) > 0.1
@@ -592,9 +644,9 @@ func _retarget_enemy(enemy_id: StringName, enemy_position: Vector2, has_player: 
 
 		if state != STATE_AVOID and should_chase and has_player:
 			state = STATE_CHASE
-			var predict_seconds: float = clamp(_ai_float("chase_predict_seconds", 0.35), 0.0, 1.2)
+			var predict_seconds: float = clamp(_enemy_ai_float(enemy_id, "chase_predict_seconds", 0.35), 0.0, 1.2)
 			var predicted_position: Vector2 = player_position + player_heading * _movement_float("base_speed", 123.75) * predict_seconds
-			var flank_distance: float = max(_ai_float("chase_flank_distance", 90.0), 0.0)
+			var flank_distance: float = max(_enemy_ai_float(enemy_id, "chase_flank_distance", 90.0), 0.0)
 			if flank_distance > 0.0:
 				var lateral: Vector2 = Vector2(-player_heading.y, player_heading.x)
 				var side_sign: float = -1.0 if abs(String(enemy_id).hash()) % 2 == 0 else 1.0
@@ -627,14 +679,14 @@ func _apply_enemy_steering(enemy_id: StringName, enemy_node: Node2D, target_posi
 	if desired_direction == Vector2.ZERO:
 		desired_direction = heading
 
-	var turn_scale: float = max(_ai_float("turn_responsiveness", 4.2), 0.5)
+	var turn_scale: float = max(_enemy_ai_float(enemy_id, "turn_responsiveness", 4.2), 0.5)
 	var turn_input: float = clamp(heading.cross(desired_direction) * turn_scale, -1.0, 1.0)
 	var hazard_avoid_turn: float = _cached_hazard_avoid_turn(enemy_id, enemy_node, delta)
 	if abs(hazard_avoid_turn) > 0.001:
 		turn_input = hazard_avoid_turn
 
 	var state: StringName = _enemy_states.get(enemy_id, STATE_PATROL)
-	var boost_probability: float = clamp(_ai_float("boost_probability", 0.12) * _boost_scale, 0.0, 1.0)
+	var boost_probability: float = clamp(_enemy_ai_float(enemy_id, "boost_probability", 0.12), 0.0, 1.0)
 	var wants_boost: bool = false
 	var has_player: bool = _player_snake_id != &"" and _snake_nodes.has(_player_snake_id)
 	if abs(hazard_avoid_turn) > 0.001:
@@ -653,7 +705,7 @@ func _apply_enemy_steering(enemy_id: StringName, enemy_node: Node2D, target_posi
 	if wants_boost and has_player:
 		var player_node: Node2D = _snake_nodes[_player_snake_id]
 		var player_distance: float = enemy_node.global_position.distance_to(player_node.global_position)
-		var unsafe_boost_distance: float = max(_ai_float("head_on_avoid_distance", 200.0), 40.0) * 1.15
+		var unsafe_boost_distance: float = max(_enemy_ai_float(enemy_id, "head_on_avoid_distance", 200.0), 40.0) * 1.25
 		var enemy_length: float = _snake_length(enemy_id)
 		var player_length: float = _snake_length(_player_snake_id)
 		if player_distance <= unsafe_boost_distance and enemy_length <= player_length * 1.15:
@@ -772,7 +824,7 @@ func _cached_hazard_avoid_turn(enemy_id: StringName, enemy_node: Node2D, delta: 
 
 	var hazard_turn: float = _compute_hazard_avoid_turn(enemy_id, enemy_node)
 	_enemy_hazard_turn_cache[enemy_id] = hazard_turn
-	var probe_interval: float = clamp(_ai_float("hazard_probe_interval", 0.08), 0.016, 0.25)
+	var probe_interval: float = clamp(_enemy_ai_float(enemy_id, "hazard_probe_interval", 0.08), 0.012, 0.25)
 	_enemy_hazard_probe_cooldown[enemy_id] = probe_interval
 	return hazard_turn
 
@@ -783,34 +835,49 @@ func _compute_hazard_avoid_turn(enemy_id: StringName, enemy_node: Node2D) -> flo
 		if heading_value is Vector2 and (heading_value as Vector2) != Vector2.ZERO:
 			heading = (heading_value as Vector2).normalized()
 
-	var probe_distance: float = max(_ai_float("hazard_probe_distance", 180.0), 40.0)
-	var probe_angle: float = deg_to_rad(clamp(_ai_float("hazard_probe_angle_deg", 28.0), 5.0, 80.0))
-	var forward_probe: Vector2 = enemy_node.global_position + heading * probe_distance
-	if not _is_probe_position_dangerous(enemy_id, forward_probe):
+	var probe_distance: float = max(_enemy_ai_float(enemy_id, "hazard_probe_distance", 180.0), 40.0)
+	var probe_angle: float = deg_to_rad(clamp(_enemy_ai_float(enemy_id, "hazard_probe_angle_deg", 28.0), 5.0, 85.0))
+	var origin: Vector2 = enemy_node.global_position
+	var forward_score: int = _direction_hazard_score(enemy_id, origin, heading, probe_distance)
+	if forward_score <= 0:
 		return 0.0
 
-	var left_probe: Vector2 = enemy_node.global_position + heading.rotated(probe_angle) * probe_distance
-	var right_probe: Vector2 = enemy_node.global_position + heading.rotated(-probe_angle) * probe_distance
-	var left_danger: bool = _is_probe_position_dangerous(enemy_id, left_probe)
-	var right_danger: bool = _is_probe_position_dangerous(enemy_id, right_probe)
-	if left_danger and not right_danger:
-		return -1.0
-	if right_danger and not left_danger:
+	var left_score: int = _direction_hazard_score(enemy_id, origin, heading.rotated(probe_angle), probe_distance)
+	var right_score: int = _direction_hazard_score(enemy_id, origin, heading.rotated(-probe_angle), probe_distance)
+	if left_score < right_score:
 		return 1.0
+	if right_score < left_score:
+		return -1.0
 
 	var toward_center: Vector2 = (-enemy_node.global_position).normalized()
 	if toward_center == Vector2.ZERO:
 		return 1.0
 	return clamp(heading.cross(toward_center) * 4.0, -1.0, 1.0)
 
+func _direction_hazard_score(attacker_id: StringName, origin: Vector2, direction: Vector2, probe_distance: float) -> int:
+	if direction == Vector2.ZERO:
+		return 3
+	var probe_direction: Vector2 = direction.normalized()
+	var distance_samples: PackedFloat32Array = PackedFloat32Array([
+		max(probe_distance * 0.25, 48.0),
+		max(probe_distance * 0.5, 72.0),
+		probe_distance
+	])
+	var hazard_score: int = 0
+	for sample_distance: float in distance_samples:
+		var probe_position: Vector2 = origin + probe_direction * sample_distance
+		if _is_probe_position_dangerous(attacker_id, probe_position):
+			hazard_score += 1
+	return hazard_score
+
 func _is_probe_position_dangerous(attacker_id: StringName, probe_position: Vector2) -> bool:
-	var boundary_margin: float = max(_ai_float("avoid_boundary_margin", 220.0), 40.0)
+	var boundary_margin: float = max(_enemy_ai_float(attacker_id, "avoid_boundary_margin", 220.0), 40.0)
 	if probe_position.length() >= world_radius - boundary_margin:
 		return true
 
-	var max_check_distance: float = max(_ai_float("hazard_probe_distance", 180.0) * 2.5, 220.0)
+	var max_check_distance: float = max(_enemy_ai_float(attacker_id, "hazard_probe_distance", 180.0) * 3.0, 260.0)
 	var max_check_distance_squared: float = max_check_distance * max_check_distance
-	var probe_radius: float = max(head_to_body_collision_radius, 1.0)
+	var probe_radius: float = max(head_to_body_collision_radius * 1.15, 1.0)
 	for snake_id: StringName in _snake_nodes.keys():
 		if snake_id == attacker_id:
 			continue
@@ -829,8 +896,8 @@ func _is_probe_position_dangerous(attacker_id: StringName, probe_position: Vecto
 				"collides_with_body",
 				probe_position,
 				probe_radius,
-				head_to_body_ignore_points,
-				head_to_body_sample_step
+				0,
+				1
 			)
 			if collided_value is bool and collided_value:
 				return true

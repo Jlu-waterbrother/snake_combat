@@ -124,11 +124,10 @@ func start_match() -> void:
 	_remaining_lives = max(player_lives, 1)
 	lives_changed.emit(_remaining_lives)
 
-	_difficulty_level = 0
+	_difficulty_level = 3
 	_difficulty_check_cooldown = 0.0
 	_respawn_retry_queued = false
 	snake_manager.set_target_enemy_count(_base_enemy_count)
-	snake_manager.set_ai_difficulty_scalars(1.0, 1.0)
 	difficulty_changed.emit(_difficulty_level, _base_enemy_count)
 
 	var player_snake_id: StringName = snake_manager.spawn_player_snake()
@@ -176,33 +175,8 @@ func set_player_mouse_controls_enabled(enabled: bool) -> void:
 func get_player_mouse_controls_enabled() -> bool:
 	return _player_mouse_controls_enabled
 
-func _update_dynamic_difficulty(delta: float) -> void:
-	if _camera_target_snake_id == &"":
-		return
-	if not snake_manager.has_snake(_camera_target_snake_id):
-		return
-
-	_difficulty_check_cooldown -= delta
-	if _difficulty_check_cooldown > 0.0:
-		return
-	_difficulty_check_cooldown = max(difficulty_tick_interval, 0.1)
-
-	var player_score: int = snake_manager.get_score(_camera_target_snake_id)
-	var raw_level: int = int(player_score / max(_score_per_level, 1))
-	var new_level: int = clampi(raw_level, 0, _max_difficulty_level)
-	if new_level == _difficulty_level:
-		return
-
-	_difficulty_level = new_level
-	var target_enemy_count: int = clampi(_base_enemy_count + _difficulty_level, 0, _max_enemy_count)
-	snake_manager.set_target_enemy_count(target_enemy_count)
-
-	var normalized_level: float = 0.0
-	if _max_difficulty_level > 0:
-		normalized_level = float(_difficulty_level) / float(_max_difficulty_level)
-	snake_manager.set_ai_difficulty_scalars(1.0 + normalized_level * 0.6, 1.0 + normalized_level * 0.5)
-	camera_follow_lerp_speed = lerp(_base_camera_follow_lerp_speed, _base_camera_follow_lerp_speed + 3.0, normalized_level)
-	difficulty_changed.emit(_difficulty_level, target_enemy_count)
+func _update_dynamic_difficulty(_delta: float) -> void:
+	return
 
 func get_leaderboard_entries() -> Array[Dictionary]:
 	if snake_manager == null or not snake_manager.has_method("get_leaderboard_entries"):
